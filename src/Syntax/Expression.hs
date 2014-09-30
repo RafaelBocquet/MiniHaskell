@@ -11,42 +11,6 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-data Kind = KStar
-          | KArrow Kind Kind
-
-instance Show Kind where
-  show (KArrow k1 k2) = "(" ++ show k1 ++ " -> " ++ show k2 ++ ")"
-  show KStar          = "*"
-
-data MonoType = TyApplication NameId [MonoType]
-              | TyVariable NameId
-
-instance Show MonoType where
-  show (TyApplication (UserName "()") [])     = "()"
-  show (TyApplication (UserName "[]") [a])    = "[" ++ show a ++ "]"
-  show (TyApplication (UserName "->") [a, b]) = "(" ++ show a ++ " -> " ++ show b ++ ")"
-  show (TyApplication name [])                = show name
-  show (TyApplication name ms)                = "(" ++ show name ++ concat ((' ' :) . show <$> ms) ++ ")"
-  show (TyVariable v)                         = show v
-
-data PolyType = PolyType
-  { polyTypeVariables :: Set NameId
-  , polyTypeType      :: MonoType
-  }
-
-instance Show PolyType where
-  show (PolyType vs t) | Set.null vs = show t
-  show (PolyType vs t)               = "forall" ++ concat ((' ' :) . show <$> Set.toList vs) ++ ". " ++ show t
-
-type Type     = PolyType
-
-freeTypeVariables :: MonoType -> Set NameId
-freeTypeVariables (TyVariable n)       = Set.singleton n
-freeTypeVariables (TyApplication d ts) = Set.unions $ freeTypeVariables <$> ts
-
-freePolyTypeVariables :: PolyType -> Set NameId
-freePolyTypeVariables (PolyType vs t) = Set.difference (freeTypeVariables t) vs
-
 data Expression' = EInteger Integer
                  | EChar Char
                  | EVariable QName
@@ -57,6 +21,19 @@ data Expression' = EInteger Integer
                  | ELet BindingMap Expression
                  | EListCase Expression Expression NameId NameId Expression
 type Expression = Locate Expression'
+
+expressionFreeVariables :: Expression -> Set NameId
+expressionFreeVariables = expressionFreeVariables' . delocate
+  where
+    expressionFreeVariables' (EInteger _)                                 = Set.empty
+    expressionFreeVariables' (EChar _)                                    = Set.empty
+    expressionFreeVariables' (EVariable (QName [] (Name VariableName v))) = Set.singleton v
+    expressionFreeVariables' (EApplication f t)                           = Set.union (expressionFreeVariables f) (expressionFreeVariables t)
+    expressionFreeVariables' (ELambda x e)                                = Set.delete x (expressionFreeVariables e)
+    expressionFreeVariables' (ETuple es)                                  = Set.unions $ expressionFreeVariables <$> es
+    expressionFreeVariables' (EIf c a b)                                  = Set.unions [expressionFreeVariables c, expressionFreeVariables a, expressionFreeVariables b]
+    expressionFreeVariables' (ELet bs e)                                  = Set.unions (expressionFreeVariables <$> e : Map.elems bs) `Set.difference` Set.fromList (Map.keys bs)
+    expressionFreeVariables' (EListCase e nil x xs r)                     = Set.unions [expressionFreeVariables e, expressionFreeVariables nil, Set.delete x . Set.delete xs $ expressionFreeVariables r]
 
 type Binding    = Locate (NameId, [NameId], Expression)
 type BindingMap = Map NameId Expression

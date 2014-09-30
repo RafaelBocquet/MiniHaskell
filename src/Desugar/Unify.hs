@@ -12,11 +12,13 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Syntax.Expression
+import Syntax.Type
 import Syntax.Name
 
 type UnifyMap   = Map NameId MonoType
 
 data UnifyError = UnifyError MonoType MonoType
+                | InfiniteType MonoType MonoType
                 deriving (Show)
 
 type UnifyMonad = StateT UnifyMap (ExceptT UnifyError (State NameId))
@@ -32,6 +34,7 @@ unifyType t1@(TyApplication d1 as1) t2@(TyApplication d2 as2) | d1 /= d2        
 unifyType t1@(TyApplication d1 as1) t2@(TyApplication d2 as2) | length as1 /= length as2 = throwError $ UnifyError t1 t2
 unifyType (TyApplication d1 as1) (TyApplication d2 as2) | otherwise                      = forM_ (zip as1 as2) (uncurry unifyType)
 unifyType t1@(TyApplication _ _) v1@(TyVariable _)                                       = unifyType v1 t1
+unifyType (TyVariable v1) t1@(TyApplication _ _) | Set.member v1 (freeTypeVariables t1)  = throwError $ InfiniteType (TyVariable v1) t1
 unifyType (TyVariable v1) t1@(TyApplication _ _)                                         = do
   x1 <- Map.lookup v1 <$> get
   case x1 of
@@ -43,8 +46,8 @@ unifyType (TyVariable v1) (TyVariable v2)               | otherwise             
   x2 <- Map.lookup v2 <$> get
   case (x1, x2) of
     (Nothing, Nothing) -> modify $ Map.insert v1 (TyVariable v2)
-    (Just x1, Nothing) -> modify $ Map.insert v2 x1
-    (Nothing, Just x2) -> modify $ Map.insert v1 x2
+    (Just x1, Nothing) -> unifyType x1 (TyVariable v2)
+    (Nothing, Just x2) -> unifyType (TyVariable v1) x2
     (Just x1, Just x2) -> unifyType x1 x2
 
 substituteType :: MonadUnify m => MonoType -> m MonoType
