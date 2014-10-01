@@ -28,6 +28,7 @@ expressionFreeVariables = expressionFreeVariables' . delocate
     expressionFreeVariables' (EInteger _)                                 = Set.empty
     expressionFreeVariables' (EChar _)                                    = Set.empty
     expressionFreeVariables' (EVariable (QName [] (Name VariableName v))) = Set.singleton v
+    expressionFreeVariables' (EVariable _)                                = Set.empty
     expressionFreeVariables' (EApplication f t)                           = Set.union (expressionFreeVariables f) (expressionFreeVariables t)
     expressionFreeVariables' (ELambda x e)                                = Set.delete x (expressionFreeVariables e)
     expressionFreeVariables' (ETuple es)                                  = Set.unions $ expressionFreeVariables <$> es

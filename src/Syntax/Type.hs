@@ -28,6 +28,31 @@ instance Show MonoType where
   show (TyApplication name ms)                = "(" ++ show name ++ concat ((' ' :) . show <$> ms) ++ ")"
   show (TyVariable v)                         = show v
 
+tyList :: MonoType -> MonoType
+tyList a = TyApplication (UserName "[]") [a]
+
+tyIO :: MonoType -> MonoType
+tyIO a = TyApplication (UserName "IO") [a]
+
+tyUnit :: MonoType
+tyUnit = TyApplication (UserName "()") []
+
+tyInteger :: MonoType
+tyInteger = TyApplication (UserName "Integer") []
+
+tyBool :: MonoType
+tyBool = TyApplication (UserName "Bool") []
+
+tyChar :: MonoType
+tyChar = TyApplication (UserName "Char") []
+
+tyArrow :: MonoType -> MonoType -> MonoType
+tyArrow a b = TyApplication (UserName "->") [a, b]
+
+tyArrowList :: [MonoType] -> MonoType -> MonoType
+tyArrowList [] b     = b
+tyArrowList (a:as) b = tyArrow a (tyArrowList as b)
+
 data PolyType = PolyType
   { polyTypeVariables :: Set NameId
   , polyTypeType      :: MonoType

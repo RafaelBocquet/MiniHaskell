@@ -5,6 +5,7 @@ import Syntax.Type
 data Expression' = EInteger Integer
                  | EChar Char
                  | EBool Bool
+                 | EVariable Int
                  | EApplication Expression Expression
                  | ELambda Int Expression
                  | ETuple [Expression]

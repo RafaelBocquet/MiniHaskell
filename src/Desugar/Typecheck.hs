@@ -22,209 +22,49 @@ import Syntax.Name
 import Syntax.Location
 import Desugar.Unify
 
+import qualified Core.Module as C
+import qualified Core.Expression as C
+
 import Debug.Trace
 
-type TypecheckMap   = Map NameId PolyType
+data TypecheckState = TypecheckState
+  { typecheckMap    :: Map NameId PolyType
+  , typecheckRename :: Map NameId NameId
+  }
 
 data TypecheckError = UnboundVariable NameId
                     | TCUnifyError UnifyError
                     deriving (Show)
 
-type TypecheckMonad = ReaderT TypecheckMap (ExceptT TypecheckError UnifyMonad)
+type TypecheckMonad = ReaderT TypecheckState (ExceptT TypecheckError UnifyMonad)
 
-baseTypecheckMap :: State NameId TypecheckMap
-baseTypecheckMap = do
-  a <- generateName
-  b <- generateName
-  c <- generateName
-  d <- generateName
-  e <- generateName
-  f <- generateName
-  return $ Map.fromList
-    [ (UserName "[]", PolyType (Set.singleton f) (TyApplication (UserName "[]") [TyVariable f]))
-    , (UserName ":", PolyType (Set.singleton a) $ 
-        TyApplication (UserName "->")
-          [ TyVariable a
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "[]") [TyVariable a]
-              , TyApplication (UserName "[]") [TyVariable a]
-              ]
-          ]
-      )
-    , (UserName "return", PolyType (Set.singleton b) $
-        TyApplication (UserName "->")
-          [ TyVariable b
-          , TyApplication (UserName "IO") [TyVariable b]
-          ]
-      )
-    , (UserName ">>=", PolyType (Set.fromList [c, d]) $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "IO") [TyVariable c]
-          , TyApplication (UserName "->")
-            [ TyApplication (UserName "->")
-              [TyVariable c
-              , TyApplication (UserName "IO") [TyVariable d]
-              ]
-            , TyApplication (UserName "IO") [TyVariable d]
-            ]
-          ]
-      )
-    , (UserName "==", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName "/=", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName "<", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName "<=", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName ">", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName ">=", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName "+", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Integer") []
-              ]
-          ]
-      )
-    , (UserName "-", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Integer") []
-              ]
-          ]
-      )
-    , (UserName "/", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Integer") []
-              ]
-          ]
-      )
-    , (UserName "*", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Integer") []
-              ]
-          ]
-      )
-    , (UserName "div", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Integer") []
-              ]
-          ]
-      )
-    , (UserName "rem", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Integer") []
-              , TyApplication (UserName "Integer") []
-              ]
-          ]
-      )
-    , (UserName "True", PolyType Set.empty $ TyApplication (UserName "Bool") [])
-    , (UserName "False", PolyType Set.empty $ TyApplication (UserName "Bool") [])
-    , (UserName "&&", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Bool") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Bool") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName "||", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Bool") []
-          , TyApplication (UserName "->")
-              [ TyApplication (UserName "Bool") []
-              , TyApplication (UserName "Bool") []
-              ]
-          ]
-      )
-    , (UserName "negate", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "Integer") []
-          ]
-      )
-    , (UserName "fromInteger", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Integer") []
-          , TyApplication (UserName "Integer") []
-          ]
-      )
-    , (UserName "()", PolyType Set.empty $
-        TyApplication (UserName "()") []
-      )
-    , (UserName "error", PolyType (Set.singleton e) $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "[]") [TyApplication (UserName "Char") []]
-          , TyVariable e
-          ]
-      )
-    , (UserName "putChar", PolyType Set.empty $
-        TyApplication (UserName "->")
-          [ TyApplication (UserName "Char") []
-          , TyApplication (UserName "IO") [TyApplication (UserName "()") []]
-          ]
-      )
-    ]
+addPrimitive :: String -> Int -> ([MonoType] -> MonoType) -> StateT TypecheckState (State NameId) ()
+addPrimitive un nf f = do
+  ns <- forM [1..nf] $ \_ -> lift generateName
+  na <- generateName
+  modify $ \s -> s { typecheckMap    = Map.insert na (PolyType (Set.fromList ns) (f $ TyVariable <$> ns)) (typecheckMap s)
+                   , typecheckRename = Map.insert (UserName un) na (typecheckRename s)
+                   }
+
+baseTypecheckMap :: State NameId TypecheckState
+baseTypecheckMap = flip execStateT (TypecheckState Map.empty Map.empty) $ do
+  addPrimitive "[]"          1 $ \[a]    -> tyList a
+  addPrimitive ":"           1 $ \[a]    -> tyArrowList [a, tyList a] (tyList a)
+  addPrimitive "return"      1 $ \[a]    -> tyIO a
+  addPrimitive ">>="         2 $ \[a, b] -> tyArrowList [tyIO a, tyArrow a (tyIO b)] (tyIO b)
+  forM_ ["==", "/=", "<", "<=", ">", ">="] $ \na ->
+    addPrimitive na          0 $ \[]      -> tyArrowList [tyInteger, tyInteger] tyBool
+  forM_ ["+", "-", "*", "div", "rem"] $ \na ->
+    addPrimitive na          0 $ \[]      -> tyArrowList [tyInteger, tyInteger] tyInteger
+  forM_ ["True", "False"] $ \na ->
+    addPrimitive na          0 $ \[]      -> tyBool
+  forM_ ["&&", "||"] $ \na ->
+    addPrimitive na          0 $ \[]      -> tyArrowList [tyBool, tyBool] tyBool
+  addPrimitive "negate"      0 $ \[]      -> tyArrow tyInteger tyInteger
+  addPrimitive "fromInteger" 0 $ \[]      -> tyArrow tyInteger tyInteger
+  addPrimitive "()"          0 $ \[]      -> tyUnit
+  addPrimitive "error"       1 $ \[a]     -> tyArrow (tyList tyChar) a
+  addPrimitive "putChar"     0 $ \[]      -> tyIO tyUnit
 
 runTypecheckMonad :: TypecheckMonad a -> State NameId (Either TypecheckError a)
 runTypecheckMonad m = do
@@ -246,19 +86,25 @@ instanciateType (PolyType as t) = do
         applySubstitution (TyApplication d ts) = TyApplication d (applySubstitution <$> ts)
     applySubstitution <$> (lift.lift $ substituteType t)
 
-environmentVariables :: TypecheckMap -> Set NameId
+environmentVariables :: TypecheckState -> Set NameId
 environmentVariables = Set.unions . (freePolyTypeVariables <$>) . Map.elems
 
-typecheckExpression :: Expression -> TypecheckMonad MonoType
+typecheckExpression :: Expression -> TypecheckMonad C.Expression
 typecheckExpression e = typecheckExpression' (delocate e)
   where
-    typecheckExpression' (EInteger _)                                 = return $ TyApplication (UserName "Integer") []
-    typecheckExpression' (EChar _)                                    = return $ TyApplication (UserName "Char") []
+    typecheckExpression' (EInteger i)                                 = return $ C.Expression (TyApplication (UserName "Integer") []) (C.EInteger i)
+    typecheckExpression' (EChar c)                                    = return $ C.Expression (TyApplication (UserName "Char") []) (C.EChar c)
     typecheckExpression' (EVariable (QName [] (Name _ x))) = do
-      t <- Map.lookup x <$> ask
+      t <- Map.lookup x . typecheckMap <$> ask
+      n <- Map.lookup x . typecheckRename <$> ask
       case t of
         Nothing -> throwError $ UnboundVariable x
-        Just t  -> instanciateType t
+        Just t  -> do
+          ty <- instanciateType t
+          case n of
+            Nothing -> x
+            Just n' -> n'
+          return $ C.Expression ty ()
     typecheckExpression' (EApplication f t)                           = do
       fTy   <- typecheckExpression f
       tTy   <- typecheckExpression t
@@ -305,7 +151,7 @@ typecheckBindings bs = do
     makeDependenciesMap n = makeDependenciesMap (n `div` 2) . dependenciesMapStep
 
     dependenciesMap :: Map NameId (Set NameId)
-    dependenciesMap = makeDependenciesMap (Map.size bs) (Map.map expressionFreeVariables bs)
+    dependenciesMap = makeDependenciesMap (Map.size bs) (Map.map (Set.intersection (Set.fromList $ Map.keys bs) . expressionFreeVariables) bs)
 
     reverseDependenciesMap :: Map NameId (Set NameId)
     reverseDependenciesMap = Map.foldWithKey (\k -> flip . Set.fold . Map.update $ Just . Set.insert k) (Map.map (const Set.empty) bs) dependenciesMap
@@ -336,5 +182,7 @@ typecheckBindings bs = do
       freeG <- environmentVariables <$> ask
       let tvs = uncurry PolyType <$> zip (flip Set.difference freeG . freeTypeVariables <$> ts) ts
       return $ Map.fromList $ zip xs tvs
-typecheckModule :: Module -> TypecheckMonad (Map NameId PolyType)
+
+
+typecheckModule :: Module -> TypecheckMonad C.Module
 typecheckModule (Module _ bs) = typecheckBindings bs
