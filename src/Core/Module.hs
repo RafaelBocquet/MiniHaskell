@@ -1,3 +1,6 @@
 module Core.Module where
 
-data Module = Module String 
+import Core.Expression
+
+data Module = Module [String] BindingMap
+            deriving (Show)

@@ -22,15 +22,15 @@ data ParseError = ParseError
                 | EmptyLambda
                 | EmptyLet
                 | EmptyDo
-                | DuplicateBinding NameId
-                | DuplicateCasePattern NameId
+                | DuplicateBinding SyntaxName
+                | DuplicateCasePattern SyntaxName
                 | ExpectedToken Token' Token
                 | ExpectedIdentifier0 Token
                 | ExpectedIdentifier1 Token
                 | ExpectedInteger Token
                 | ExpectedString Token
                 | ExpectedChar Token
-                | EquationDifferentArguments NameId Location [NameId] [NameId]
+                | EquationDifferentArguments SyntaxName Location [SyntaxName] [SyntaxName]
                 | UnexpectedToken Token
                 deriving (Show)
 
@@ -40,10 +40,10 @@ data ParseState = ParseState
 
 -- Parser
 
-type Parser = StateT ParseState (ExceptT ParseError (State NameId))
+type Parser = StateT ParseState (Except ParseError)
 
-runParser :: [Token] -> Parser a -> State NameId (Either ParseError a)
-runParser ts p = runExceptT $ flip evalStateT (ParseState ts) p
+runParser :: [Token] -> Parser a -> Either ParseError a
+runParser ts p = runExcept $ flip evalStateT (ParseState ts) p
 
 nextToken :: Parser Token
 nextToken = do
@@ -57,7 +57,7 @@ consumeToken =
   modify $ \s -> case parserInput s of
     []                    -> s
     (Locate _ TkEOF) : [] -> s
-    c : cs                -> s { parserInput    = cs
+    c : cs                -> s { parserInput = cs
                                }
 
 getPosition :: Parser Position
@@ -146,7 +146,9 @@ parseManySep1 p s c cs e = do
     else
       throwError e
 
-makeBindings :: [Locate (NameId, [NameId], Expression)] -> Parser BindingMap
+-- Bindings
+
+makeBindings :: [Locate (SyntaxName, [SyntaxName], Expression SyntaxName)] -> Parser (BindingMap SyntaxName)
 makeBindings =
   foldrM
     (\(Locate loc (name, xs, e)) acc -> do
@@ -157,17 +159,15 @@ makeBindings =
     )
     Map.empty
 
-data Precedence = LPrec | RPrec
-
 -- Module
 
-parseModule :: Parser Module
+parseModule :: Parser (Module SyntaxName)
 parseModule = do
   bs <- makeBindings =<< parseMany parseDefinition (isNotToken TkEOF)
   expectToken TkEOF
   return $ Module ["Main"] bs
 
-parseDefinition :: Parser Binding
+parseDefinition :: Parser (Binding SyntaxName)
 parseDefinition = do
   p1 <- getPosition
   name <- UserName <$> parseIdentifier0
@@ -179,7 +179,9 @@ parseDefinition = do
 
 -- Expressions
 
-makePrecedenceParser :: [(Precedence, [Token'])] -> Parser Expression -> Parser Expression
+data Precedence = LPrec | RPrec
+
+makePrecedenceParser :: [(Precedence, [Token'])] -> Parser (Expression SyntaxName) -> Parser (Expression SyntaxName)
 makePrecedenceParser [] p                = p
 makePrecedenceParser ((prec, ts) : xs) p =
   let nextParser = makePrecedenceParser xs p in do
@@ -225,7 +227,7 @@ precedences =
   , (LPrec, [TkTimes, TkDivides])
   ]
 
-parseSimpleExpression :: Parser Expression
+parseSimpleExpression :: Parser (Expression SyntaxName)
 parseSimpleExpression = do
   t <- nextToken
   p1 <- getPosition
@@ -267,7 +269,7 @@ parseSimpleExpression = do
       return $ Locate (makeLocation p1 p2) $ EChar c
     _ -> throwError $ UnexpectedToken t
 
-parseApplications :: Parser Expression
+parseApplications :: Parser (Expression SyntaxName)
 parseApplications = do
   p1 <- getPosition
   (e:es) <- parseMany1 parseSimpleExpression (satisfy isSimpleExpressionStart) ParseError
@@ -276,7 +278,7 @@ parseApplications = do
       makeApplicationList f ts = foldl makeApplication f ts
   return $ makeApplicationList e es
 
-parseNegation :: Parser Expression
+parseNegation :: Parser (Expression SyntaxName)
 parseNegation = do
   t <- nextToken
   p1 <- getPosition
@@ -292,7 +294,7 @@ parseNegation = do
           e
     _       -> parseApplications
 
-precedenceParser :: Parser Expression
+precedenceParser :: Parser (Expression SyntaxName)
 precedenceParser = makePrecedenceParser precedences parseNegation
 
 isSimpleExpressionStart :: Token' -> Bool
@@ -323,7 +325,7 @@ isExpressionStart (TkString _)      = True
 isExpressionStart (TkChar _)        = True
 isExpressionStart _                 = False
 
-parseExpression :: Parser Expression
+parseExpression :: Parser (Expression SyntaxName)
 parseExpression = do
   t <- nextToken
   case delocate t of
@@ -334,7 +336,7 @@ parseExpression = do
     TkDo     -> parseDo
     _        -> precedenceParser
 
-parseLambda :: Parser Expression
+parseLambda :: Parser (Expression SyntaxName)
 parseLambda = do
   p1 <- getPosition
   expectToken TkLambda
@@ -345,7 +347,7 @@ parseLambda = do
   let loc = makeLocation p1 p2
   return $ foldr (\x -> Locate loc . ELambda (UserName x)) e xs
 
-parseIf :: Parser Expression
+parseIf :: Parser (Expression SyntaxName)
 parseIf = do
   p1 <- getPosition
   expectToken TkIf
@@ -357,7 +359,7 @@ parseIf = do
   p2 <- getPosition
   return $ Locate (makeLocation p1 p2) (EIf c a b)
 
-parseLet :: Parser Expression
+parseLet :: Parser (Expression SyntaxName)
 parseLet = do
   p1 <- getPosition
   expectToken TkLet
@@ -375,7 +377,7 @@ parseLet = do
   p2 <- getPosition
   return $ Locate (makeLocation p1 p2) (ELet bs e)
 
-parseCase :: Parser Expression
+parseCase :: Parser (Expression SyntaxName)
 parseCase = do
   p1 <- getPosition
   expectToken TkCase
@@ -398,7 +400,7 @@ parseCase = do
   when (x == xs) (throwError $ DuplicateCasePattern x)
   return $ Locate (makeLocation p1 p2) (EListCase e c1 x xs c2)
 
-parseDo :: Parser Expression
+parseDo :: Parser (Expression SyntaxName)
 parseDo = do
   p1 <- getPosition
   expectToken TkDo
@@ -417,7 +419,7 @@ parseDo = do
           (Locate (locate b) $ ELambda (UserName "") b)
   return $ foldr1 mkThen as
 
-parseBinding :: Parser Binding
+parseBinding :: Parser (Binding SyntaxName)
 parseBinding = do
   p1 <- getPosition
   name <- UserName <$> parseIdentifier1
@@ -427,7 +429,7 @@ parseBinding = do
   p2 <- getPosition
   return $ Locate (makeLocation p1 p2) (name, xs, e)
 
-parseTuple :: Parser Expression
+parseTuple :: Parser (Expression SyntaxName)
 parseTuple = do
   p1 <- getPosition
   expectToken TkLParen
@@ -440,10 +442,10 @@ parseTuple = do
     _    -> do
       let makeApplication f t      = Locate (makeLocation p1 p2) (EApplication f t)
           makeApplicationList f ts = foldl makeApplication f ts
-          tupleConstructor         = Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName (replicate (length xs) ',')))))
+          tupleConstructor         = Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName (replicate (length xs - 1) ',')))))
       return $ makeApplicationList tupleConstructor xs
 
-parseList :: Parser Expression
+parseList :: Parser (Expression SyntaxName)
 parseList = do
   p1 <- getPosition
   expectToken TkLBracket

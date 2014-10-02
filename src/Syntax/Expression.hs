@@ -11,18 +11,18 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-data Expression' = EInteger Integer
-                 | EChar Char
-                 | EVariable QName
-                 | EApplication Expression Expression
-                 | ELambda NameId Expression
-                 | ETuple [Expression]
-                 | EIf Expression Expression Expression
-                 | ELet BindingMap Expression
-                 | EListCase Expression Expression NameId NameId Expression
-type Expression = Locate Expression'
+data Expression' n = EInteger Integer
+                   | EChar Char
+                   | EVariable (QName n)
+                   | EApplication (Expression n) (Expression n)
+                   | ELambda n (Expression n)
+                   | ETuple [Expression n]
+                   | EIf (Expression n) (Expression n) (Expression n)
+                   | ELet (BindingMap n) (Expression n)
+                   | EListCase (Expression n) (Expression n) n n (Expression n)
+type Expression n = Locate (Expression' n)
 
-expressionFreeVariables :: Expression -> Set NameId
+expressionFreeVariables :: Ord n => Expression n -> Set n
 expressionFreeVariables = expressionFreeVariables' . delocate
   where
     expressionFreeVariables' (EInteger _)                                 = Set.empty
@@ -36,5 +36,5 @@ expressionFreeVariables = expressionFreeVariables' . delocate
     expressionFreeVariables' (ELet bs e)                                  = Set.unions (expressionFreeVariables <$> e : Map.elems bs) `Set.difference` Set.fromList (Map.keys bs)
     expressionFreeVariables' (EListCase e nil x xs r)                     = Set.unions [expressionFreeVariables e, expressionFreeVariables nil, Set.delete x . Set.delete xs $ expressionFreeVariables r]
 
-type Binding    = Locate (NameId, [NameId], Expression)
-type BindingMap = Map NameId Expression
+type Binding n    = Locate (n, [n], Expression n)
+type BindingMap n = Map n (Expression n)

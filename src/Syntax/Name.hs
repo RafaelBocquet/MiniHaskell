@@ -1,40 +1,36 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 module Syntax.Name where
 
 import Data.Char
 import Control.Monad
 import Control.Monad.State
 
-data NameId = UserName String | GenName Int
-            deriving (Eq, Ord)
-
-instance Show NameId where
+data SyntaxName = UserName String | GeneratedName Int
+                deriving (Eq, Ord)
+instance Show SyntaxName where
   show (UserName s@(c:_)) | isAlpha c = s
   show (UserName s)                   = "(" ++ s ++ ")"
-  show (GenName i)                    = "?" ++ show i
+  show (GeneratedName i)              = "?" ++ show i
+
+data CoreName   = CoreName Int String
+instance Eq CoreName where
+  CoreName i _ == CoreName j _ = i == j
+instance Ord CoreName where
+  CoreName i _ `compare` CoreName j _ = i `compare` j
+instance Show CoreName where
+  show (CoreName _ s) = s
 
 data NameSpace = VariableName
                | ConstructorName
                deriving (Eq, Ord)
 
-data Name   = Name NameSpace NameId
+data Name n = Name NameSpace n
             deriving (Eq, Ord)
 
-instance Show Name where
+instance Show n => Show (Name n) where
   show (Name _ s) = show s
 
-data QName  = QName [String] Name
-            deriving (Eq, Ord)
+data QName n = QName [String] (Name n)
+           deriving (Eq, Ord)
 
-instance Show QName where
+instance Show n => Show (QName n) where
   show (QName ms n) = concat (fmap (++ ".") ms) ++ show n
-
-runNameMonad :: State NameId a -> a
-runNameMonad = flip evalState (GenName 0)
-
-generateName :: MonadState NameId m => m NameId
-generateName = do
-  GenName cur <- get
-  put (GenName $ cur + 1)
-  return $ GenName cur

@@ -1,5 +1,13 @@
 module Core.Expression where
 
+import Control.Monad
+import Control.Applicative
+
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
+
 import Syntax.Type
 
 data Expression' = EInteger Integer
@@ -12,6 +20,11 @@ data Expression' = EInteger Integer
                  | EIf Expression Expression Expression
                  | ELet BindingMap Expression
                  | EListCase Expression Expression Int Int Expression
-data Expression = Expression MonoType Expression'
+                deriving (Show)
+data Expression = Expression
+  { expressionType  :: MonoType
+  , expressionValue :: Expression'
+  }
+  deriving (Show)
 
-data BindingMap = Map Int (PolyType, Expression)
+type BindingMap = Map Int (PolyType, Expression)

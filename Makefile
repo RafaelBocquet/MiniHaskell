@@ -9,10 +9,11 @@ all:
 	ghc -isrc -ibuild -odir build -hidir build src/Syntax/Type.hs
 	ghc -isrc -ibuild -odir build -hidir build src/Syntax/Module.hs
 
-	ghc -isrc -ibuild -odir build -hidir build src/Desugar/Typecheck.hs
-	ghc -isrc -ibuild -odir build -hidir build src/Desugar/Unify.hs
+	ghc -isrc -ibuild -odir build -hidir build src/Desugar/Rename.hs
+	# ghc -isrc -ibuild -odir build -hidir build src/Desugar/Typecheck.hs
+	# ghc -isrc -ibuild -odir build -hidir build src/Desugar/Unify.hs
 
-	ghc -isrc -ibuild -odir build -hidir build src/Main.hs -o build/Main
+	# ghc -isrc -ibuild -odir build -hidir build src/Main.hs -o build/Main
 
 clean:
 	$(RM) -r build

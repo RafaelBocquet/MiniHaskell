@@ -9,4 +9,4 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-data Module = Module [String] BindingMap
+data Module n = Module [String] (BindingMap n)
