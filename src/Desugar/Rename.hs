@@ -84,3 +84,8 @@ renameBindings mp m =
     )
     keys
   return (Map.fromList $ zip ks es, mv)
+
+renameModule :: Module SyntaxName -> RenameMonad (Module CoreName)
+renameModule (Module n bs) = do
+  (bs', ()) <- renameBindings bs (return ())
+  return $ Module n bs'
