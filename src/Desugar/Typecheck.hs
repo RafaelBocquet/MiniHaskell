@@ -27,26 +27,20 @@ import qualified Core.Expression as C
 
 import Debug.Trace
 
-data TypecheckState = TypecheckState
-  { typecheckMap    :: Map NameId PolyType
-  , typecheckRename :: Map NameId Int
-  }
+data TypecheckState = TypecheckState (Map CoreName (PolyType CoreName))
 
-data TypecheckError = UnboundVariable NameId
+data TypecheckError = UnboundVariable CoreName
                     | TCUnifyError UnifyError
                     deriving (Show)
 
 type TypecheckMonad = ReaderT TypecheckState (ExceptT TypecheckError UnifyMonad)
 
-addPrimitive :: String -> Int -> ([MonoType] -> MonoType) -> StateT TypecheckState (State NameId) ()
+addPrimitive :: String -> Int -> ([(MonoType CoreName)] -> (MonoType CoreName)) -> StateT TypecheckState (State CoreName) ()
 addPrimitive un nf f = do
-  ns <- forM [1..nf] $ \_ -> lift generateName
-  GenName na <- lift generateName
-  modify $ \s -> s { typecheckMap    = Map.insert (GenName na) (PolyType (Set.fromList ns) (f $ TyVariable <$> ns)) (typecheckMap s)
-                   , typecheckRename = Map.insert (UserName un) na (typecheckRename s)
-                   }
+  modify $ Map.insert (GenName na) (PolyType (Set.fromList ns) (f $ TyVariable <$> ns))
+                   
 
-baseTypecheckMap :: State NameId TypecheckState
+baseTypecheckMap :: State CoreName TypecheckState
 baseTypecheckMap = flip execStateT (TypecheckState Map.empty Map.empty) $ do
   addPrimitive "[]"          1 $ \[a]    -> tyList a
   addPrimitive ":"           1 $ \[a]    -> tyArrowList [a, tyList a] (tyList a)
@@ -66,7 +60,7 @@ baseTypecheckMap = flip execStateT (TypecheckState Map.empty Map.empty) $ do
   addPrimitive "error"       1 $ \[a]     -> tyArrow (tyList tyChar) a
   addPrimitive "putChar"     0 $ \[]      -> tyIO tyUnit
 
-runTypecheckMonad :: TypecheckMonad a -> State NameId (Either TypecheckError a)
+runTypecheckMonad :: TypecheckMonad a -> State CoreName (Either TypecheckError a)
 runTypecheckMonad m = do
   tcEnv <- baseTypecheckMap
   v <- runUnifyMonad . runExceptT . flip runReaderT tcEnv $ m
@@ -77,7 +71,7 @@ runTypecheckMonad m = do
 
 (***) f g x = (f x, g x)
 
-instanciateType :: PolyType -> TypecheckMonad MonoType
+instanciateType :: (PolyType CoreName) -> TypecheckMonad (MonoType CoreName)
 instanciateType (PolyType as t) = do
     subst <- Map.fromList <$> forM (Set.toList as) (\a -> (,) a <$> (lift.lift.lift $ generateName))
     let applySubstitution (TyVariable a)       = case Map.lookup a subst of
@@ -86,7 +80,7 @@ instanciateType (PolyType as t) = do
         applySubstitution (TyApplication d ts) = TyApplication d (applySubstitution <$> ts)
     applySubstitution <$> (lift.lift $ substituteType t)
 
-environmentVariables :: TypecheckState -> Set NameId
+environmentVariables :: TypecheckState -> Set CoreName
 environmentVariables = Set.unions . (freePolyTypeVariables <$>) . Map.elems . typecheckMap
 
 typecheckExpression :: Expression -> TypecheckMonad C.Expression
@@ -162,20 +156,20 @@ typecheckBindings bs = do
       Map.empty
       bgs
   where
-    dependenciesMapStep :: Map NameId (Set NameId) -> Map NameId (Set NameId)
+    dependenciesMapStep :: Map CoreName (Set CoreName) -> Map CoreName (Set CoreName)
     dependenciesMapStep mp = Map.mapWithKey (\k v -> Set.union v $ Set.unions $ fromJust . flip Map.lookup mp <$> Set.toList v) mp
 
-    makeDependenciesMap :: Int -> Map NameId (Set NameId) -> Map NameId (Set NameId)
+    makeDependenciesMap :: Int -> Map CoreName (Set CoreName) -> Map CoreName (Set CoreName)
     makeDependenciesMap 0 = id
     makeDependenciesMap n = makeDependenciesMap (n `div` 2) . dependenciesMapStep
 
-    dependenciesMap :: Map NameId (Set NameId)
+    dependenciesMap :: Map CoreName (Set CoreName)
     dependenciesMap = makeDependenciesMap (Map.size bs) (Map.map (Set.intersection (Set.fromList $ Map.keys bs) . expressionFreeVariables) bs)
 
-    reverseDependenciesMap :: Map NameId (Set NameId)
+    reverseDependenciesMap :: Map CoreName (Set CoreName)
     reverseDependenciesMap = Map.foldWithKey (\k -> flip . Set.fold . Map.update $ Just . Set.insert k) (Map.map (const Set.empty) bs) dependenciesMap
 
-    topologicalSort :: Set NameId -> [Set NameId] -> [Set NameId]
+    topologicalSort :: Set CoreName -> [Set CoreName] -> [Set CoreName]
     topologicalSort st acc
       | Set.null st = acc
       | otherwise   =
@@ -188,7 +182,7 @@ typecheckBindings bs = do
             in
           topologicalSort (Set.delete elem $ st `Set.difference` allElemDep) (elemSet : acc')
 
-    typecheckBindings' :: Set NameId -> TypecheckMonad C.BindingMap
+    typecheckBindings' :: Set CoreName -> TypecheckMonad C.BindingMap
     typecheckBindings' st = do
       let xs = Set.toList st
           es = fromJust . flip Map.lookup bs <$> xs

@@ -9,22 +9,23 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Syntax.Type
+import Syntax.Name
 
 data Expression' = EInteger Integer
                  | EChar Char
                  | EBool Bool
-                 | EVariable Int
+                 | EVariable CoreName
                  | EApplication Expression Expression
-                 | ELambda Int Expression
+                 | ELambda CoreName Expression
                  | ETuple [Expression]
                  | EIf Expression Expression Expression
                  | ELet BindingMap Expression
-                 | EListCase Expression Expression Int Int Expression
+                 | EListCase Expression Expression CoreName CoreName Expression
                 deriving (Show)
 data Expression = Expression
-  { expressionType  :: MonoType
+  { expressionType  :: MonoType CoreName
   , expressionValue :: Expression'
   }
   deriving (Show)
 
-type BindingMap = Map Int (PolyType, Expression)
+type BindingMap = Map Int (PolyType CoreName, Expression)
