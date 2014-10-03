@@ -27,10 +27,7 @@ import qualified Core.Expression as C
 
 import Debug.Trace
 
-data TypecheckState = TypecheckState
-  { typecheckMap    :: Map NameId PolyType
-  , typecheckRename :: Map NameId Int
-  }
+type TypecheckState = Map NameId PolyType
 
 data TypecheckError = UnboundVariable NameId
                     | TCUnifyError UnifyError
