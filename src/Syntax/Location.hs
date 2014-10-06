@@ -35,6 +35,9 @@ instance Located (Locate a) where
 instance Show a => Show (Locate a) where
   show (Locate _ a) = show a
 
+noLocation :: Location
+noLocation = Location startPosition (-1)
+
 delocate :: Locate a -> a
 delocate (Locate _ a) = a
 

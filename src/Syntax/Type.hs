@@ -28,34 +28,6 @@ instance Show n => Show (MonoType n) where
   show (TyApplication name ms)                = "(" ++ show name ++ concat ((' ' :) . show <$> ms) ++ ")"
   show (TyVariable v)                         = show v
 
-tyList :: MonoType SyntaxName -> MonoType SyntaxName
-tyList a = TyApplication (QName [] $ Name ConstructorName $ UserName "[]") [a]
-
-tyTuple :: [MonoType SyntaxName] -> MonoType SyntaxName
-tyTuple xs = TyApplication (QName [] $ Name ConstructorName $ UserName $ replicate (length xs - 1) ',') xs
-
-tyIO :: MonoType SyntaxName -> MonoType SyntaxName
-tyIO a = TyApplication (QName [] $ Name ConstructorName $ UserName "IO") [a]
-
-tyUnit :: MonoType SyntaxName
-tyUnit = TyApplication (QName [] $ Name ConstructorName $ UserName "()") []
-
-tyInteger :: MonoType SyntaxName
-tyInteger = TyApplication (QName [] $ Name ConstructorName $ UserName "Integer") []
-
-tyBool :: MonoType SyntaxName
-tyBool = TyApplication (QName [] $ Name ConstructorName $ UserName "Bool") []
-
-tyChar :: MonoType SyntaxName
-tyChar = TyApplication (QName [] $ Name ConstructorName $ UserName "Char") []
-
-tyArrow :: MonoType SyntaxName -> MonoType SyntaxName -> MonoType SyntaxName
-tyArrow a b = TyApplication (QName [] $ Name ConstructorName $ UserName "->") [a, b]
-
-tyArrowList :: [MonoType SyntaxName] -> MonoType SyntaxName -> MonoType SyntaxName
-tyArrowList [] b     = b
-tyArrowList (a:as) b = tyArrow a (tyArrowList as b)
-
 data PolyType n = PolyType
   { polyTypeVariables :: Set n
   , polyTypeType      :: MonoType n
@@ -68,6 +40,10 @@ instance Show n => Show (PolyType n) where
 freeTypeVariables :: Ord n => MonoType n -> Set n
 freeTypeVariables (TyVariable n)       = Set.singleton n
 freeTypeVariables (TyApplication d ts) = Set.unions $ freeTypeVariables <$> ts
+
+typeConstructors :: Ord n => MonoType n -> Set (QName n)
+typeConstructors (TyVariable n)       = Set.empty
+typeConstructors (TyApplication d ts) = Set.insert d $ Set.unions (typeConstructors <$> ts)
 
 freePolyTypeVariables :: Ord n => PolyType n -> Set n
 freePolyTypeVariables (PolyType vs t) = Set.difference (freeTypeVariables t) vs

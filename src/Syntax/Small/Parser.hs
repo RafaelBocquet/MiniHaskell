@@ -148,14 +148,14 @@ parseManySep1 p s c cs e = do
 
 -- Bindings
 
-makeBindings :: [Locate (SyntaxName, [SyntaxName], Expression SyntaxName)] -> Parser (BindingMap SyntaxName)
+makeBindings :: [Locate (SyntaxName, [SyntaxName], Expression SyntaxName)] -> Parser (DeclarationMap SyntaxName)
 makeBindings =
   foldrM
     (\(Locate loc (name, xs, e)) acc -> do
       case Map.lookup name acc of
-        Nothing                    ->
-          return $ Map.insert name (foldr (\x -> Locate loc . ELambda x) e xs) acc
-        Just _ -> throwError $ DuplicateBinding name
+        Nothing ->
+          return $ Map.insert name (Declaration $ foldr (\x -> Locate loc . ELambda x) e xs) acc
+        Just _  -> throwError $ DuplicateBinding name
     )
     Map.empty
 
@@ -165,7 +165,7 @@ parseModule :: Parser (Module SyntaxName)
 parseModule = do
   bs <- makeBindings =<< parseMany parseDefinition (isNotToken TkEOF)
   expectToken TkEOF
-  return $ Module ["Main"] bs
+  return $ Module ["Main"] (Set.singleton ["Primitive"]) Map.empty bs
 
 parseDefinition :: Parser (Binding SyntaxName)
 parseDefinition = do

@@ -20,139 +20,169 @@ import Syntax.Type
 import Syntax.Module
 import Syntax.Name
 import Syntax.Location
+
 import Desugar.Unify
+import Desugar.Rename
 
 import qualified Core.Module as C
 import qualified Core.Expression as C
 
 import Debug.Trace
 
-data TypecheckState = TypecheckState (Map CoreName (PolyType CoreName))
+data Environment = Environment
+  { environmentMap      :: Map (QName CoreName) (PolyType CoreName)
+  , environmentRenaming :: RenameMap
+  }
 
-data TypecheckError = UnboundVariable CoreName
+data TypecheckError = UnboundVariable (QName CoreName)
                     | TCUnifyError UnifyError
+                    | UnknownPrimitive String
                     deriving (Show)
 
-type TypecheckMonad = ReaderT TypecheckState (ExceptT TypecheckError UnifyMonad)
+type TypecheckMonad = ReaderT Environment (ExceptT TypecheckError (StateT Int UnifyMonad))
 
-addPrimitive :: String -> Int -> ([(MonoType CoreName)] -> (MonoType CoreName)) -> StateT TypecheckState (State CoreName) ()
-addPrimitive un nf f = do
-  modify $ Map.insert (GenName na) (PolyType (Set.fromList ns) (f $ TyVariable <$> ns))
-                   
+generateName :: TypecheckMonad CoreName
+generateName = do
+  n <- get
+  modify (+ 1)
+  return $ CoreName n "a"
 
-baseTypecheckMap :: State CoreName TypecheckState
-baseTypecheckMap = flip execStateT (TypecheckState Map.empty Map.empty) $ do
-  addPrimitive "[]"          1 $ \[a]    -> tyList a
-  addPrimitive ":"           1 $ \[a]    -> tyArrowList [a, tyList a] (tyList a)
-  addPrimitive "return"      1 $ \[a]    -> tyArrow a (tyIO a)
-  addPrimitive ">>="         2 $ \[a, b] -> tyArrowList [tyIO a, tyArrow a (tyIO b)] (tyIO b)
-  forM_ ["==", "/=", "<", "<=", ">", ">="] $ \na ->
-    addPrimitive na          0 $ \[]      -> tyArrowList [tyInteger, tyInteger] tyBool
-  forM_ ["+", "-", "*", "div", "rem"] $ \na ->
-    addPrimitive na          0 $ \[]      -> tyArrowList [tyInteger, tyInteger] tyInteger
-  forM_ ["True", "False"] $ \na ->
-    addPrimitive na          0 $ \[]      -> tyBool
-  forM_ ["&&", "||"] $ \na ->
-    addPrimitive na          0 $ \[]      -> tyArrowList [tyBool, tyBool] tyBool
-  addPrimitive "negate"      0 $ \[]      -> tyArrow tyInteger tyInteger
-  addPrimitive "fromInteger" 0 $ \[]      -> tyArrow tyInteger tyInteger
-  addPrimitive "()"          0 $ \[]      -> tyUnit
-  addPrimitive "error"       1 $ \[a]     -> tyArrow (tyList tyChar) a
-  addPrimitive "putChar"     0 $ \[]      -> tyIO tyUnit
-
-runTypecheckMonad :: TypecheckMonad a -> State CoreName (Either TypecheckError a)
-runTypecheckMonad m = do
-  tcEnv <- baseTypecheckMap
-  v <- runUnifyMonad . runExceptT . flip runReaderT tcEnv $ m
+runTypecheckMonad :: Environment -> TypecheckMonad a -> State Int (Either TypecheckError a)
+runTypecheckMonad env m = do
+  c      <- get
+  let v = runUnifyMonad . flip runStateT c . runExceptT . flip runReaderT env $ m
   case v of
-    Left e          -> return (Left $ TCUnifyError e)
-    Right (Left e)  -> return (Left e)
-    Right (Right r) -> return (Right r)
+    Left e             -> return (Left $ TCUnifyError e)
+    Right (Left e, _)  -> return (Left e)
+    Right (Right r, c) -> do
+      put c
+      return (Right r)
 
-(***) f g x = (f x, g x)
+localBind :: CoreName -> PolyType CoreName -> TypecheckMonad a -> TypecheckMonad a
+localBind x t = local $ \s -> s { environmentMap = Map.insert (QName [] (Name VariableName x)) t (environmentMap s) }
 
-instanciateType :: (PolyType CoreName) -> TypecheckMonad (MonoType CoreName)
+localBindMany :: Map CoreName (PolyType CoreName) -> TypecheckMonad a -> TypecheckMonad a
+localBindMany bs = local $ \s -> s { environmentMap = Map.union (Map.mapKeys (QName [] . Name VariableName) bs) (environmentMap s) }
+
+getPrimitive :: NameSpace -> String -> TypecheckMonad (QName CoreName)
+getPrimitive ns s = do
+  p <- Map.lookup (QName ["Primitive"] (Name ns (UserName s))) . environmentRenaming <$> ask
+  case p of
+    Just (RenameGlobal [p]) -> return p
+    _                       -> throwError $ UnknownPrimitive s
+
+instanciateType :: PolyType CoreName -> TypecheckMonad (MonoType CoreName)
 instanciateType (PolyType as t) = do
-    subst <- Map.fromList <$> forM (Set.toList as) (\a -> (,) a <$> (lift.lift.lift $ generateName))
+    subst <- Map.fromList <$> forM (Set.toList as) (\a -> (,) a <$> generateName)
     let applySubstitution (TyVariable a)       = case Map.lookup a subst of
           Just b  -> TyVariable b
           Nothing -> TyVariable a
         applySubstitution (TyApplication d ts) = TyApplication d (applySubstitution <$> ts)
-    applySubstitution <$> (lift.lift $ substituteType t)
+    applySubstitution <$> (lift.lift.lift $ substituteType t)
 
-environmentVariables :: TypecheckState -> Set CoreName
-environmentVariables = Set.unions . (freePolyTypeVariables <$>) . Map.elems . typecheckMap
+environmentVariables :: TypecheckMonad (Set CoreName)
+environmentVariables = Set.unions . (freePolyTypeVariables <$>) . Map.elems . environmentMap <$> ask
 
-typecheckExpression :: Expression -> TypecheckMonad C.Expression
+typecheckExpression :: Expression CoreName -> TypecheckMonad C.Expression
 typecheckExpression e = typecheckExpression' (delocate e)
   where
-    typecheckExpression' (EInteger i)                                 = return $ C.Expression (TyApplication (UserName "Integer") []) (C.EInteger i)
-    typecheckExpression' (EChar c)                                    = return $ C.Expression (TyApplication (UserName "Char") []) (C.EChar c)
-    typecheckExpression' (EVariable (QName [] (Name ns x))) = do
-      n <- Map.lookup x . typecheckRename <$> ask
-      case n of
-        Just x -> typecheckExpression' (EVariable (QName [] (Name ns (GenName x))))
-        Nothing -> do
-          t <- Map.lookup x . typecheckMap <$> ask
-          case t of
-            Nothing -> throwError $ UnboundVariable x
-            Just t  -> do
-              ty <- instanciateType t
-              return $ C.Expression ty (C.EVariable $ fromGenName x)
+    typecheckExpression' (EInteger i)                                 = do
+      tyInt <- getPrimitive TypeConstructorName "Int"
+      return $ C.Expression (TyApplication tyInt []) (C.EInteger i)
+    typecheckExpression' (EChar c)                                    = do
+      tyChar <- getPrimitive TypeConstructorName "Char"
+      return $ C.Expression (TyApplication tyChar []) (C.EChar c)
+    typecheckExpression' (EVariable x) = do
+      t <- Map.lookup x . environmentMap <$> ask
+      case t of
+        Nothing -> throwError $ UnboundVariable x
+        Just t  -> do
+          ty <- instanciateType t
+          return $ C.Expression ty (C.EVariable x)
     typecheckExpression' (EApplication f t)                           = do
       fTy   <- typecheckExpression f
       tTy   <- typecheckExpression t
-      tau   <- lift.lift.lift $ generateName
-      sigma <- lift.lift.lift $ generateName
-      lift.lift $ unifyType (C.expressionType tTy) (TyVariable tau)
-      lift.lift $ unifyType (C.expressionType fTy) (tyArrow (TyVariable tau) (TyVariable sigma))
+      tau   <- generateName
+      sigma <- generateName
+      lift.lift.lift $ unifyType (C.expressionType tTy) (TyVariable tau)
+      tyArrow <- TyApplication <$> getPrimitive TypeConstructorName "->"
+      lift.lift.lift $ unifyType (C.expressionType fTy) (tyArrow [TyVariable tau, TyVariable sigma])
       return $ C.Expression (TyVariable sigma) (C.EApplication fTy tTy)
     typecheckExpression' (ELambda x e)                                = do
-      tau <- lift.lift.lift $ generateName
-      GenName xn <- lift.lift.lift $ generateName
-      eTy <- local (\s -> s { typecheckMap    = Map.insert x (PolyType Set.empty (TyVariable tau)) $ typecheckMap s
-                            , typecheckRename = Map.insert x xn $ typecheckRename s
-                            }) $ typecheckExpression e
-      return $ C.Expression (tyArrow (TyVariable tau) (C.expressionType eTy)) (C.ELambda xn eTy)
+      tau     <- generateName
+      tyArrow <- TyApplication <$> getPrimitive TypeConstructorName "->"
+      eTy     <- localBind x (PolyType Set.empty (TyVariable tau)) $ typecheckExpression e
+      return $ C.Expression (tyArrow [TyVariable tau, C.expressionType eTy]) (C.ELambda x eTy)
     typecheckExpression' (ETuple es)                                  = do
       ts <- mapM typecheckExpression es
-      return $ C.Expression (tyTuple $ C.expressionType <$> ts) (C.ETuple ts)
+      tyTuple <- getPrimitive TypeConstructorName (replicate (length es - 1) ',')
+      return $ C.Expression (TyApplication tyTuple (C.expressionType <$> ts)) (C.ETuple ts)
     typecheckExpression' (EIf c a b)                                  = do
       cTy <- typecheckExpression c
       aTy <- typecheckExpression a
       bTy <- typecheckExpression b
-      lift.lift $ unifyType (C.expressionType cTy) tyBool
-      lift.lift $ unifyMonoType (C.expressionType aTy) (C.expressionType bTy)
+      tyBool <- getPrimitive TypeConstructorName "Bool"
+      lift.lift.lift $ unifyType (C.expressionType cTy) (TyApplication tyBool [])
+      lift.lift.lift $ unifyMonoType (C.expressionType aTy) (C.expressionType bTy)
       return $ C.Expression (C.expressionType aTy) (C.EIf cTy aTy bTy)
     typecheckExpression' (ELet bs e)                                  = do
       bts <- typecheckBindings bs
-      eTy <- localBind bts $ typecheckExpression e
+      eTy <- localBindMany (Map.map fst bts) $ typecheckExpression e
       return $ C.Expression (C.expressionType eTy) (C.ELet bts eTy)
     typecheckExpression' (EListCase e nil x xs r)                     = do
-      eTy   <- typecheckExpression e
-      tau   <- lift.lift.lift $ generateName
-      lift.lift $ unifyType (C.expressionType eTy) (tyList (TyVariable tau))
-      nilTy <- typecheckExpression nil
-      GenName xn  <- lift.lift.lift $ generateName
-      GenName xsn <- lift.lift.lift $ generateName
-      rTy   <- local (\s -> s { typecheckMap    = Map.insert x  (PolyType Set.empty (TyVariable tau))
-                                                . Map.insert xs (PolyType Set.empty (C.expressionType eTy))
-                                                $ typecheckMap s
-                              , typecheckRename = Map.insert x xn
-                                                . Map.insert xs xsn
-                                                $ typecheckRename s
-                              }) $ typecheckExpression r
-      lift.lift $ unifyType (C.expressionType nilTy) (C.expressionType rTy)
-      return $ C.Expression (C.expressionType nilTy) (C.EListCase eTy nilTy xn xsn rTy)
+      eTy    <- typecheckExpression e
+      tau    <- generateName
+      tyList <- getPrimitive TypeConstructorName "[]"
+      lift.lift.lift $ unifyType (C.expressionType eTy) (TyApplication tyList [TyVariable tau])
+      nilTy  <- typecheckExpression nil
+      rTy    <- localBind x (PolyType Set.empty $ TyVariable tau)
+              $ localBind xs (PolyType Set.empty $ TyApplication tyList [TyVariable tau])
+              $ typecheckExpression r
+      lift.lift.lift $ unifyType (C.expressionType nilTy) (C.expressionType rTy)
+      return $ C.Expression (C.expressionType nilTy) (C.EListCase eTy nilTy x xs rTy)
+    -- typecheckExpression' (PrimitiveDeclaration prim)                   = 
 
-localBind :: C.BindingMap -> TypecheckMonad a -> TypecheckMonad a
-localBind bindings = local (\s -> s { typecheckMap = Map.union (Map.map fst . Map.mapKeys GenName $ bindings) (typecheckMap s) })
+typecheckDeclaration :: Declaration CoreName -> TypecheckMonad C.Declaration
+typecheckDeclaration (Declaration e)             = C.Declaration <$> typecheckExpression e
+typecheckDeclaration (PrimitiveDeclaration prim) = return $ C.PrimitiveDeclaration prim
 
-typecheckBindings :: BindingMap -> TypecheckMonad C.BindingMap
+primitiveType :: PrimitiveDeclaration -> TypecheckMonad (MonoType CoreName)
+primitiveType p 
+  | p `elem` [FromIntegerDeclaration, NegateDeclaration]
+      = do
+    tyInt   <- flip TyApplication [] <$> getPrimitive TypeConstructorName "Int"
+    tyArrow <- TyApplication <$> getPrimitive TypeConstructorName "->"
+    return $ tyArrow [tyInt, tyInt]
+  | p `elem` [ AddDeclaration, SubDeclaration, MulDeclaration, DivDeclaration, RemDeclaration
+             , LTDeclaration, LEDeclaration, GTDeclaration, GEDeclaration, EQDeclaration, NEDeclaration]
+      = do
+    tyInt   <- flip TyApplication [] <$> getPrimitive TypeConstructorName "Int"
+    tyArrow <- TyApplication <$> getPrimitive TypeConstructorName "->"
+    return $ tyArrow [tyInt, tyArrow [tyInt, tyInt]]
+  | p `elem` [ AndDeclaration, OrDeclaration]
+      = do
+    tyBool  <- flip TyApplication [] <$> getPrimitive TypeConstructorName "Bool"
+    tyArrow <- TyApplication <$> getPrimitive TypeConstructorName "->"
+    return $ tyArrow [tyBool, tyArrow [tyBool, tyBool]]
+  | p == BindDeclaration
+      = do
+    a       <- TyVariable <$> generateName
+    b       <- TyVariable <$> generateName
+    tyIO    <- TyApplication <$> getPrimitive TypeConstructorName "IO"
+    tyArrow <- TyApplication <$> getPrimitive TypeConstructorName "->"
+    return $ tyArrow [tyIO [a], tyArrow [tyArrow [a, tyIO [b]], tyIO [b]]]
+  | p == ReturnDeclaration
+      = do
+    a       <- TyVariable <$> generateName 
+    tyIO    <- TyApplication <$> getPrimitive TypeConstructorName "IO"
+    tyArrow <- TyApplication <$> getPrimitive TypeConstructorName "->"
+    return $ tyArrow [a, tyIO [a]]
+
+typecheckBindings :: DeclarationMap CoreName -> TypecheckMonad C.DeclarationMap
 typecheckBindings bs = do
     let bgs = reverse $ topologicalSort (Set.fromList $ Map.keys bs) []
     foldlM
-      (\bts bg -> (Map.union bts <$>) $ localBind bts $ (Map.union bts) <$> typecheckBindings' bg)
+      (\bts bg -> (Map.union bts <$>) $ localBindMany (Map.map fst bts) $ (Map.union bts) <$> typecheckBindings' bg)
       Map.empty
       bgs
   where
@@ -164,7 +194,7 @@ typecheckBindings bs = do
     makeDependenciesMap n = makeDependenciesMap (n `div` 2) . dependenciesMapStep
 
     dependenciesMap :: Map CoreName (Set CoreName)
-    dependenciesMap = makeDependenciesMap (Map.size bs) (Map.map (Set.intersection (Set.fromList $ Map.keys bs) . expressionFreeVariables) bs)
+    dependenciesMap = makeDependenciesMap (Map.size bs) (Map.map (Set.intersection (Set.fromList $ Map.keys bs) . declarationFreeVariables) bs)
 
     reverseDependenciesMap :: Map CoreName (Set CoreName)
     reverseDependenciesMap = Map.foldWithKey (\k -> flip . Set.fold . Map.update $ Just . Set.insert k) (Map.map (const Set.empty) bs) dependenciesMap
@@ -178,28 +208,28 @@ typecheckBindings bs = do
               revElemDep = fromJust $ Map.lookup elem reverseDependenciesMap
               elemSet    = Set.insert elem $ Set.intersection allElemDep revElemDep
               elemDep    = allElemDep `Set.difference` elemSet
-              acc' = topologicalSort elemDep acc
+              acc'       = topologicalSort elemDep acc
             in
           topologicalSort (Set.delete elem $ st `Set.difference` allElemDep) (elemSet : acc')
 
-    typecheckBindings' :: Set CoreName -> TypecheckMonad C.BindingMap
+    typecheckBindings' :: Set CoreName -> TypecheckMonad C.DeclarationMap
     typecheckBindings' st = do
       let xs = Set.toList st
           es = fromJust . flip Map.lookup bs <$> xs
-      ts   <- forM xs (const $ TyVariable <$> (lift.lift.lift $ generateName))
-      xsn  <- forM xs (const $ lift.lift.lift $ fromGenName <$> generateName)
-      esTy <- local (\s -> s { typecheckMap    = Map.union (Map.fromList $ zip xs (PolyType Set.empty <$> ts)) $ typecheckMap s
-                             , typecheckRename = Map.union (Map.fromList $ zip xs xsn)                         $ typecheckRename s
-                             }) $ forM (zip es ts) $ \(e, t) -> do
-        eTy <- typecheckExpression e
-        lift.lift $ unifyType t (C.expressionType eTy)
+      ts <- forM xs (const $ TyVariable <$> generateName)
+      esTy <- localBindMany (Map.fromList $ zip xs (PolyType Set.empty <$> ts)) $ forM (zip es ts) $ \(e, t) -> do
+        eTy <- typecheckDeclaration e
+        case eTy of
+          C.Declaration e             -> lift.lift.lift $ unifyType t (C.expressionType e)
+          C.PrimitiveDeclaration prim -> do
+            pTy <- primitiveType prim
+            lift.lift.lift $ unifyType t pTy
         return $ eTy
-      unMap <- lift.lift $ get
-      ts    <- lift.lift $ substituteType `mapM` ts
-      freeG <- environmentVariables <$> ask
-      let tvs = uncurry PolyType <$> zip (flip Set.difference freeG . freeTypeVariables <$> ts) ts
-      return $ Map.fromList $ zip xsn (zip tvs esTy)
+      ts    <- lift.lift.lift $ substituteType `mapM` ts
+      freeG <- environmentVariables
+      let tvs = uncurry PolyType <$> zip ((`Set.difference` freeG) . freeTypeVariables <$> ts) ts
+      return $ Map.fromList $ zip xs (zip tvs esTy)
 
 
-typecheckModule :: Module -> TypecheckMonad C.Module
-typecheckModule (Module n bs) = C.Module n <$> typecheckBindings bs
+typecheckModule :: Module CoreName -> TypecheckMonad C.Module
+typecheckModule (Module n is ds bs) = C.Module n <$> typecheckBindings bs

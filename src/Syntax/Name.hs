@@ -21,6 +21,8 @@ instance Show CoreName where
 
 data NameSpace = VariableName
                | ConstructorName
+               | TypeVariableName
+               | TypeConstructorName
                deriving (Eq, Ord)
 
 data Name n = Name NameSpace n
