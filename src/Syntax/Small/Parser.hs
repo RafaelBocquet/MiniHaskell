@@ -197,7 +197,7 @@ makePrecedenceParser ((prec, ts) : xs) p =
           EApplication
             (Locate (makeLocation p1 p2) $
               EApplication
-                (Locate (locate op) $ EVariable (QName [] (Name VariableName (UserName . precedenceParserOperator $ delocate op))))
+                (Locate (locate op) $ EVariable (QName [] VariableName (UserName . precedenceParserOperator $ delocate op)))
                 e1
             )
             e2
@@ -237,27 +237,27 @@ parseSimpleExpression = do
     TkTrue           -> do
       consumeToken
       p2 <- getPosition
-      return $ Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName "True"))))
+      return $ Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName "True")))
     TkFalse          -> do
       consumeToken
       p2 <- getPosition
-      return $ Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName "False"))))
+      return $ Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName "False")))
     TkIdentifier1 id -> do
       consumeToken
       p2 <- getPosition
-      return $ Locate (makeLocation p1 p2) (EVariable (QName [] (Name VariableName (UserName id))))
+      return $ Locate (makeLocation p1 p2) (EVariable (QName [] VariableName (UserName id)))
     TkInteger i      -> do
       consumeToken
       p2 <- getPosition
       return $ Locate (makeLocation p1 p2) $
         EApplication
-          (Locate (makeLocation p1 p2) (EVariable (QName [] (Name VariableName (UserName "fromInteger")))))
+          (Locate (makeLocation p1 p2) (EVariable (QName [] VariableName (UserName "fromInteger"))))
           (Locate (makeLocation p1 p2) (EInteger i))
     TkString s       -> do
       consumeToken
       p2 <- getPosition
-      let nil = Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName "[]"))))
-      let cons = Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName ":"))))
+      let nil = Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName "[]")))
+      let cons = Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName ":")))
       let makeCons a b = Locate (makeLocation p1 p2) $
             EApplication
               (Locate (makeLocation p1 p2) $ EApplication cons a)
@@ -290,7 +290,7 @@ parseNegation = do
       p3 <- getPosition
       return $ Locate (makeLocation p1 p3) $
         EApplication
-          (Locate (makeLocation p1 p2) (EVariable (QName [] (Name VariableName (UserName "negate")))))
+          (Locate (makeLocation p1 p2) (EVariable (QName [] VariableName (UserName "negate"))))
           e
     _       -> parseApplications
 
@@ -413,7 +413,7 @@ parseDo = do
         EApplication
           (Locate (makeLocation p1 p2) $
             EApplication
-            (Locate (makeLocation p1 p2) $ EVariable (QName [] (Name VariableName (UserName ">>="))))
+            (Locate (makeLocation p1 p2) $ EVariable (QName [] VariableName (UserName ">>=")))
             a
           ) 
           (Locate (locate b) $ ELambda (UserName "") b)
@@ -437,12 +437,12 @@ parseTuple = do
   expectToken TkRParen
   p2 <- getPosition
   case xs of
-    []   -> return $ Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName "()"))))
+    []   -> return $ Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName "()")))
     x:[] -> return x
     _    -> do
       let makeApplication f t      = Locate (makeLocation p1 p2) (EApplication f t)
           makeApplicationList f ts = foldl makeApplication f ts
-          tupleConstructor         = Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName (replicate (length xs - 1) ',')))))
+          tupleConstructor         = Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName (replicate (length xs - 1) ','))))
       return $ makeApplicationList tupleConstructor xs
 
 parseList :: Parser (Expression SyntaxName)
@@ -452,8 +452,8 @@ parseList = do
   xs <- parseManySep parseExpression (expectToken TkComma) (satisfy isExpressionStart) (isToken TkComma)
   expectToken TkRBracket
   p2 <- getPosition
-  let nil = Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName "[]"))))
-  let cons = Locate (makeLocation p1 p2) (EVariable (QName [] (Name ConstructorName (UserName ":"))))
+  let nil = Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName "[]")))
+  let cons = Locate (makeLocation p1 p2) (EVariable (QName [] ConstructorName (UserName ":")))
   let makeCons a b = Locate (makeLocation p1 p2) $
         EApplication
           (Locate (makeLocation p1 p2) $ EApplication cons a)

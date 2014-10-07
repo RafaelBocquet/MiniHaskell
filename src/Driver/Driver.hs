@@ -30,7 +30,7 @@ typecheck moduleMap =
     renaming <- runRenameMonad Map.empty $
       foldlM
         (\(renameMap, modMap) mod -> traceShow renameMap $ do
-          let localRenameMap = Map.mapKeysWith mappend (\(QName _ n) -> QName [] n) renameMap
+          let localRenameMap = Map.mapKeysWith mappend (\(QName _ ns n) -> QName [] ns n) renameMap
           (renameMap', mod') <- local (const $ Map.unionWith mappend renameMap localRenameMap) $ renameModule (fromJust $ Map.lookup mod moduleMap)
           return (Map.union renameMap' renameMap, Map.insert mod mod' modMap)
         )
@@ -39,17 +39,17 @@ typecheck moduleMap =
     case renaming of
       Left e                    -> error (show e)
       Right (renameMap, modMap) -> do
-        typechecked <- runTypecheckMonad (Environment Map.empty renameMap) $
+        typechecked <- runTypecheckMonad (Environment Map.empty Map.empty renameMap) $
           foldlM
-            (\cModuleMap mod -> do
-              cMod <- typecheckModule (fromJust $ Map.lookup mod modMap)
-              return $ Map.insert mod cMod cModuleMap
+            (\(cTypeMap, cModuleMap) mod -> do
+              (cTypes, cMod) <- globalBindMany cTypeMap $ typecheckModule (fromJust $ Map.lookup mod modMap)
+              return $ (Map.union cTypes cTypeMap, Map.insert mod cMod cModuleMap)
             )
-            Map.empty
+            (Map.empty, Map.empty)
             mods
         case typechecked of
-          Left e  -> error (show e)
-          Right r -> return r
+          Left e       -> error (show e)
+          Right (_, r) -> return r
   where
     dependenciesMapStep :: Map ModuleName (Set ModuleName) -> Map ModuleName (Set ModuleName)
     dependenciesMapStep mp = Map.mapWithKey (\k v -> Set.union v $ Set.unions $ fromJust . flip Map.lookup mp <$> Set.toList v) mp

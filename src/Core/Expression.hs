@@ -16,7 +16,7 @@ import qualified Syntax.Expression as S
 data Expression' = EInteger Integer
                  | EChar Char
                  | EBool Bool
-                 | EVariable (QName CoreName)
+                 | EVariable QCoreName
                  | EApplication Expression Expression
                  | ELambda CoreName Expression
                  | ETuple [Expression]
@@ -35,3 +35,6 @@ data Declaration = Declaration Expression
                  deriving (Show)
 
 type DeclarationMap = Map CoreName (PolyType CoreName, Declaration)
+
+data DataDeclaration    = NONENONENONE
+type DataDeclarationMap = Map CoreName DataDeclaration

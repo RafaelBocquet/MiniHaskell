@@ -3,6 +3,7 @@ module Primitive where
 import Syntax.Name
 import Syntax.Module
 import Syntax.Expression
+import Syntax.Type
 import Syntax.Location
 
 import Control.Applicative
@@ -20,11 +21,19 @@ primitiveModule = Module
       [ (UserName "->",    PrimitiveDataDeclaration ArrowDataDeclaration)
       , (UserName "Int",   PrimitiveDataDeclaration IntDataDeclaration)
       , (UserName "Char",  PrimitiveDataDeclaration CharDataDeclaration)
-      , (UserName "Bool",  PrimitiveDataDeclaration BoolDataDeclaration)
-      , (UserName "[]",    PrimitiveDataDeclaration ListDataDeclaration)
-      , (UserName "()",    PrimitiveDataDeclaration UnitDataDeclaration)
+      , (UserName "Bool",  DataDeclaration []             [DataConstructor (UserName "True") [], DataConstructor (UserName "False") []])
+      , (UserName "[]",    DataDeclaration
+                             [UserName "a"]
+                             [ DataConstructor (UserName "[]") []
+                             , DataConstructor (UserName ":")
+                                [ TyVariable (UserName "a")
+                                , TyApplication (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "[]"))) (TyVariable (UserName "a"))
+                                ]
+                             ]
+        )
+      , (UserName "()",    DataDeclaration []             [DataConstructor (UserName "()") []])
       , (UserName "IO",    PrimitiveDataDeclaration IODataDeclaration)
-      ] ++ ((\n -> (UserName (replicate (n-1) ','), PrimitiveDataDeclaration (TupleDataDeclaration n))) <$> [2..62])
+      ] -- ++ ((\n -> (UserName (replicate (n-1) ','), PrimitiveDataDeclaration (TupleDataDeclaration n))) <$> [2..62])
   , moduleDeclarations     = Map.fromList
       [ (UserName "fromInteger", PrimitiveDeclaration FromIntegerDeclaration)
       , (UserName "negate",      PrimitiveDeclaration NegateDeclaration)
@@ -43,5 +52,7 @@ primitiveModule = Module
       , (UserName "||",          PrimitiveDeclaration OrDeclaration)
       , (UserName ">>=",         PrimitiveDeclaration BindDeclaration)
       , (UserName "return",      PrimitiveDeclaration ReturnDeclaration)
+      , (UserName "error",       PrimitiveDeclaration ErrorDeclaration)
+      , (UserName "putChar",     PrimitiveDeclaration PutCharDeclaration)
       ]
   }

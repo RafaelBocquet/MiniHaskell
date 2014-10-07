@@ -25,12 +25,14 @@ import Syntax.Module
 import Syntax.Name
 import Syntax.Location
 
-data RenameError = UnboundName (QName SyntaxName)
-                 | BoundNameOverlap (QName SyntaxName) [QName CoreName]
+import Debug.Trace
+
+data RenameError = UnboundName QSyntaxName
+                 | BoundNameOverlap QSyntaxName [QCoreName]
                  deriving (Show)
 
-data RenameEntry = RenameLocal (QName CoreName)
-                 | RenameGlobal [QName CoreName]
+data RenameEntry = RenameLocal QCoreName
+                 | RenameGlobal [QCoreName]
                  deriving (Show)
 
 instance Monoid RenameEntry where
@@ -39,9 +41,9 @@ instance Monoid RenameEntry where
   _ `mappend` RenameLocal b = RenameLocal b
   RenameGlobal a `mappend` RenameGlobal b = RenameGlobal (a ++ b)
 
-type RenameMap   = Map (QName SyntaxName) RenameEntry
+type RenameMap   = Map QSyntaxName RenameEntry
 
-lookupRename :: QName SyntaxName -> RenameMap -> RenameEntry
+lookupRename :: QSyntaxName -> RenameMap -> RenameEntry
 lookupRename n m = case Map.lookup n m of
   Just x  -> x
   Nothing -> RenameGlobal []
@@ -67,50 +69,49 @@ renameMany f vs m = do
     )
     vs
 
-renameName :: Bool -> RenamingIn (QName SyntaxName) (QName CoreName) a
-renameName l (QName md (Name ns x)) m = do
+renameName :: RenamingIn QSyntaxName QCoreName a
+renameName (QName md ns x) m = do
   name <- case x of
     UserName s      -> flip CoreName s   <$> get
     GeneratedName i -> flip CoreName "a" <$> get
   modify (+ 1)
-  let cName = (if l then RenameLocal else RenameGlobal . (: [])) $ QName md $ Name ns name
-  r <- local (Map.insertWith mappend (QName md $ Name ns x) cName) m
-  return (QName md $ Name ns name, r)
+  r <- if md == []
+    then local (Map.insertWith mappend (QName md ns x) (RenameLocal $ QName md ns name)) m
+    else local (Map.insertWith mappend (QName md ns x) (RenameGlobal [QName md ns name])
+              . Map.insertWith mappend (QName [] ns x) (RenameGlobal [QName md ns name])) m
+  return (QName md ns name, r)
 
-renameVariableName :: Bool -> RenamingIn SyntaxName CoreName a
-renameVariableName l n m = do
-  (QName [] (Name VariableName x), a) <- renameName l (QName [] $ Name VariableName n) m
+renameNameInNamespace :: NameSpace -> ModuleName -> RenamingIn SyntaxName CoreName a
+renameNameInNamespace ns md n m = do
+  (QName _ _ x, a) <- renameName (QName md ns n) m
   return (x, a)
 
-renameConstructorName :: Bool -> RenamingIn SyntaxName CoreName a
-renameConstructorName l n m = do
-  (QName [] (Name ConstructorName x), a) <- renameName l (QName [] $ Name ConstructorName n) m
-  return (x, a)
+renameVariableName :: ModuleName -> RenamingIn SyntaxName CoreName a
+renameVariableName = renameNameInNamespace VariableName
 
-renameTypeVariableName :: Bool -> RenamingIn SyntaxName CoreName a
-renameTypeVariableName l n m = do
-  (QName [] (Name TypeVariableName x), a) <- renameName l (QName [] $ Name TypeVariableName n) m
-  return (x, a)
+renameConstructorName :: ModuleName -> RenamingIn SyntaxName CoreName a
+renameConstructorName = renameNameInNamespace ConstructorName
 
-renameTypeConstructorName :: Bool -> RenamingIn SyntaxName CoreName a
-renameTypeConstructorName l n m = do
-  (QName [] (Name TypeConstructorName x), a) <- renameName l (QName [] $ Name TypeConstructorName n) m
-  return (x, a)
+renameTypeVariableName :: ModuleName -> RenamingIn SyntaxName CoreName a
+renameTypeVariableName = renameNameInNamespace TypeVariableName
 
-renameNames :: Bool -> RenamingIn [QName SyntaxName] [QName CoreName] a
-renameNames l = renameMany (renameName l)
+renameTypeConstructorName :: ModuleName -> RenamingIn SyntaxName CoreName a
+renameTypeConstructorName = renameNameInNamespace TypeConstructorName
 
-renameVariableNames :: Bool -> RenamingIn [SyntaxName] [CoreName] a
-renameVariableNames l = renameMany (renameVariableName l)
+renameNames :: RenamingIn [QSyntaxName] [QCoreName] a
+renameNames = renameMany renameName
 
-renameConstructorNames :: Bool -> RenamingIn [SyntaxName] [CoreName] a
-renameConstructorNames l = renameMany (renameConstructorName l)
+renameVariableNames :: ModuleName -> RenamingIn [SyntaxName] [CoreName] a
+renameVariableNames md = renameMany (renameVariableName md)
 
-renameTypeVariableNames :: Bool -> RenamingIn [SyntaxName] [CoreName] a
-renameTypeVariableNames l = renameMany (renameTypeVariableName l)
+renameConstructorNames :: ModuleName -> RenamingIn [SyntaxName] [CoreName] a
+renameConstructorNames md = renameMany (renameConstructorName md)
 
-renameTypeConstructorNames :: Bool -> RenamingIn [SyntaxName] [CoreName] a
-renameTypeConstructorNames l = renameMany (renameTypeConstructorName l)
+renameTypeVariableNames :: ModuleName -> RenamingIn [SyntaxName] [CoreName] a
+renameTypeVariableNames md = renameMany (renameTypeVariableName md)
+
+renameTypeConstructorNames :: ModuleName -> RenamingIn [SyntaxName] [CoreName] a
+renameTypeConstructorNames md = renameMany (renameTypeConstructorName md)
 
 renameExpression :: Renaming (Expression SyntaxName) (Expression CoreName)
 renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
@@ -130,7 +131,7 @@ renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
       t' <- renameExpression t
       return $ EApplication f' t'
     renameExpression' (ELambda x e)            = do
-      (x', e') <- renameVariableName True x $ renameExpression e
+      (x', e') <- renameVariableName [] x $ renameExpression e
       return $ ELambda x' e'
     renameExpression' (ETuple xs)              = do
       xs' <- renameExpression `mapM` xs
@@ -141,62 +142,81 @@ renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
       b' <- renameExpression b
       return $ EIf c' a' b'
     renameExpression' (ELet bs e)              = do
-      (bs', e') <- renameBindings True bs (renameExpression e)
+      (bs', e') <- renameDeclarations [] bs (renameExpression e)
       return $ ELet bs' e'
 
     renameExpression' (EListCase e nil x xs r) = do
       e' <- renameExpression e
       nil' <- renameExpression nil
-      (x', (xs', r')) <- renameVariableName True x $ renameVariableName True xs $ renameExpression r
+      (x', (xs', r')) <- renameVariableName [] x $ renameVariableName [] xs $ renameExpression r
       return $ EListCase e' nil' x' xs' r'
 
 renameDeclaration :: Renaming (Declaration SyntaxName) (Declaration CoreName)
 renameDeclaration (Declaration e)             = Declaration <$> renameExpression e
 renameDeclaration (PrimitiveDeclaration prim) = return $ PrimitiveDeclaration prim
 
+--renamePolyType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
+--renamePolyType t = do
+--    ks <- Map.keysSet <$> ask
+--    let fv = Set.toList . Set.filter (\v -> not $ Set.member (QName [] TypeVariableName v) ks) $ freeTypeVariables t
+--    (_, t') <- renameTypeVariableNames [] fv $ renameMonoType t
+--    return t'
+
 renameMonoType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
-renameMonoType t = do
-    ks <- Map.keysSet <$> ask
-    let fv  = Set.toList . Set.filter (\v -> not $ Set.member (QName [] $ Name TypeVariableName v) ks) $ freeTypeVariables t
-        tcs = Set.toList . Set.filter (\v -> not $ Set.member v ks)                                    $ typeConstructors t
-    (_, (_, t')) <- renameTypeVariableNames True fv $ renameNames True tcs $ renameMonoType' t
-    return t'
-  where
-    renameMonoType' :: Renaming (MonoType SyntaxName) (MonoType CoreName)
-    renameMonoType' (TyVariable n) = do
-      RenameLocal (QName [] (Name TypeVariableName n')) <- fromJust . Map.lookup (QName [] (Name TypeVariableName n)) <$> ask
-      return $ TyVariable n'
-    renameMonoType' (TyApplication n ts) = do
-      RenameLocal n'  <- fromJust . Map.lookup n <$> ask
-      ts' <- renameMonoType' `mapM` ts
-      return $ TyApplication n' ts'
+renameMonoType (TyVariable n) = do
+  n' <- lookupRename (QName [] TypeVariableName n) <$> ask
+  case n' of
+    RenameLocal (QName [] TypeVariableName v) -> return $ TyVariable v
+    _                                         -> throwError $ UnboundName (QName [] TypeVariableName n)
+renameMonoType (TyConstant n) = do
+  n' <- lookupRename n <$> ask
+  case n' of
+    RenameGlobal []  -> throwError $ UnboundName n
+    RenameGlobal [x] -> return $ TyConstant x
+    RenameGlobal xs  -> throwError $ BoundNameOverlap n xs
+    RenameLocal x    -> return $ TyConstant x
+renameMonoType (TyApplication a b) = liftM2 TyApplication (renameMonoType a) (renameMonoType b)
 
-renameDataConstructor :: Renaming (DataConstructor SyntaxName) (DataConstructor CoreName)
-renameDataConstructor (DataConstructor n ts) = do
-  (n', ()) <- renameTypeConstructorName True n (return ())
-  ts'      <- renameMonoType `mapM` ts
-  return $ DataConstructor n' ts'
+renameDataConstructor :: ModuleName -> RenamingIn (DataConstructor SyntaxName) (DataConstructor CoreName) c
+renameDataConstructor md (DataConstructor n ts) m = do
+  (n', (ts', c')) <- renameConstructorName md n $ do
+    ts' <- renameMonoType `mapM` ts
+    c   <- m
+    return (ts', c)
+  return (DataConstructor n' ts', c')
 
-renameDataDeclaration :: Renaming (DataDeclaration SyntaxName) (DataDeclaration CoreName)
-renameDataDeclaration (DataDeclaration dcs) = DataDeclaration <$> renameDataConstructor `mapM` dcs
+renameDataDeclaration :: ModuleName -> RenamingIn (DataDeclaration SyntaxName) (DataDeclaration CoreName) c
+renameDataDeclaration md (DataDeclaration tvs dcs) m           = do
+  (tvs', (dcs', c)) <- renameTypeVariableNames [] tvs $ renameMany (renameDataConstructor md) dcs m
+  return (DataDeclaration tvs' dcs', c)
+renameDataDeclaration md (PrimitiveDataDeclaration prim) m = do
+  c <- m
+  return (PrimitiveDataDeclaration prim, c)
 
-renameMap :: Bool -> Renaming a b -> RenamingIn (Map SyntaxName a) (Map CoreName b) c
-renameMap l f mp m = do
+renameMapIn :: ModuleName -> NameSpace -> (forall c. RenamingIn a b c) -> RenamingIn (Map SyntaxName a) (Map CoreName b) c
+renameMapIn md ns f mp m = do
   let keys  = Map.keys mp
       elems = Map.elems mp
-  (ks, (es, mv)) <- renameVariableNames l keys $ do
+  (ks, (es, mv)) <- renameMany (renameNameInNamespace ns md) keys $ renameMany f elems m
+  return (Map.fromList $ zip ks es, mv)
+
+renameMap :: ModuleName -> NameSpace -> Renaming a b -> RenamingIn (Map SyntaxName a) (Map CoreName b) c
+renameMap md ns f mp m = do
+  let keys  = Map.keys mp
+      elems = Map.elems mp
+  (ks, (es, mv)) <- renameMany (renameNameInNamespace ns md) keys $ do
     es <- f `mapM` elems
     mv <- m
     return (es, mv)
   return (Map.fromList $ zip ks es, mv)
 
-renameBindings :: Bool -> RenamingIn (DeclarationMap SyntaxName) (DeclarationMap CoreName) c
-renameBindings l = renameMap l renameDeclaration
+renameDeclarations :: ModuleName -> RenamingIn (DeclarationMap SyntaxName) (DeclarationMap CoreName) c
+renameDeclarations md = renameMap md VariableName renameDeclaration
 
---renameDataDeclarations :: RenamingIn (DataDeclarationMap SyntaxName) (DataDeclarationMap CoreName) c
---renameDataDeclarations = renameMap renameDataDeclaration
+renameDataDeclarations :: ModuleName -> RenamingIn (DataDeclarationMap SyntaxName) (DataDeclarationMap CoreName) c
+renameDataDeclarations md = renameMapIn md TypeConstructorName (renameDataDeclaration md)
 
 renameModule :: Module SyntaxName -> RenameMonad (RenameMap, Module CoreName)
 renameModule (Module mn is ds bs) = do
-  (bs', rMap) <- renameBindings False bs ask
-  return $ (Map.mapKeys (\n -> case n of { QName [] n -> QName mn n; _ -> n }) rMap, Module mn is Map.empty bs')
+  (ds', (bs', rMap)) <- renameDataDeclarations mn ds $ renameDeclarations mn bs $ ask
+  return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' bs')

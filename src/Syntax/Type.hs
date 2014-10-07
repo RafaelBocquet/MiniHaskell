@@ -10,23 +10,26 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-data Kind = KStar
-          | KArrow Kind Kind
+data Kind n = KStar
+            | KVariable n
+            | KArrow (Kind n) (Kind n)
 
-instance Show Kind where
+instance Show n => Show (Kind n) where
   show (KArrow k1 k2) = "(" ++ show k1 ++ " -> " ++ show k2 ++ ")"
   show KStar          = "*"
+  show (KVariable v)  = show v
 
-data MonoType n = TyApplication (QName n) [MonoType n]
+data MonoType n = TyApplication (MonoType n) (MonoType n)
                 | TyVariable n
+                | TyConstant (QName n)
 
 instance Show n => Show (MonoType n) where
   --show (TyApplication (UserName "()") [])     = "()"
   --show (TyApplication (UserName "[]") [a])    = "[" ++ show a ++ "]"
   --show (TyApplication (UserName "->") [a, b]) = "(" ++ show a ++ " -> " ++ show b ++ ")"
-  show (TyApplication name [])                = show name
-  show (TyApplication name ms)                = "(" ++ show name ++ concat ((' ' :) . show <$> ms) ++ ")"
+  show (TyApplication a b)                    = "(" ++ show a ++ " " ++ show b ++ ")"
   show (TyVariable v)                         = show v
+  show (TyConstant c)                         = show c
 
 data PolyType n = PolyType
   { polyTypeVariables :: Set n
@@ -37,13 +40,13 @@ instance Show n => Show (PolyType n) where
   show (PolyType vs t) | Set.null vs = show t
   show (PolyType vs t)               = "forall" ++ concat ((' ' :) . show <$> Set.toList vs) ++ ". " ++ show t
 
-freeTypeVariables :: Ord n => MonoType n -> Set n
-freeTypeVariables (TyVariable n)       = Set.singleton n
-freeTypeVariables (TyApplication d ts) = Set.unions $ freeTypeVariables <$> ts
+makeTypeApplication :: Ord n => MonoType n -> [MonoType n] -> MonoType n
+makeTypeApplication = foldl TyApplication
 
-typeConstructors :: Ord n => MonoType n -> Set (QName n)
-typeConstructors (TyVariable n)       = Set.empty
-typeConstructors (TyApplication d ts) = Set.insert d $ Set.unions (typeConstructors <$> ts)
+freeTypeVariables :: Ord n => MonoType n -> Set n
+freeTypeVariables (TyVariable v)                             = Set.singleton v
+freeTypeVariables (TyConstant _)                             = Set.empty
+freeTypeVariables (TyApplication a b)                        = Set.union (freeTypeVariables a) (freeTypeVariables b)
 
 freePolyTypeVariables :: Ord n => PolyType n -> Set n
 freePolyTypeVariables (PolyType vs t) = Set.difference (freeTypeVariables t) vs
