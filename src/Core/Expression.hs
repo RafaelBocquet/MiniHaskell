@@ -13,17 +13,18 @@ import Syntax.Name
 
 import qualified Syntax.Expression as S
 
-data Expression' = EInteger Integer
-                 | EChar Char
-                 | EBool Bool
-                 | EVariable QCoreName
-                 | EApplication Expression Expression
-                 | ELambda CoreName Expression
-                 | ETuple [Expression]
-                 | EIf Expression Expression Expression
-                 | ELet DeclarationMap Expression
-                 | EListCase Expression Expression CoreName CoreName Expression
-                deriving (Show)
+data Expression' = EInteger Integer                                             -- OK
+                 | EChar Char                                                   -- OK
+                 | EBool Bool                                                   -- OK
+                 | EVariable QCoreName                                          -- ~OK
+                 | EApplication Expression Expression                           -- ~OK
+                 | ELambda CoreName Expression                                  -- ~OK
+                 | ETuple [Expression]                                          -- OK
+                 | EIf Expression Expression Expression                         -- OK
+                 | ELet DeclarationMap Expression                               -- ~OK
+                 | EListCase Expression Expression CoreName CoreName Expression -- OK
+                 deriving (Show)
+
 data Expression = Expression
   { expressionType  :: MonoType CoreName
   , expressionValue :: Expression'

@@ -29,7 +29,7 @@ typecheck moduleMap =
     let mods = reverse $ topologicalSort (Map.keysSet moduleMap) [] in flip evalState 0 $ do
     renaming <- runRenameMonad Map.empty $
       foldlM
-        (\(renameMap, modMap) mod -> traceShow renameMap $ do
+        (\(renameMap, modMap) mod -> do
           let localRenameMap = Map.mapKeysWith mappend (\(QName _ ns n) -> QName [] ns n) renameMap
           (renameMap', mod') <- local (const $ Map.unionWith mappend renameMap localRenameMap) $ renameModule (fromJust $ Map.lookup mod moduleMap)
           return (Map.union renameMap' renameMap, Map.insert mod mod' modMap)

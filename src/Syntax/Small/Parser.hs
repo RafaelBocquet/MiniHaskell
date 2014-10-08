@@ -197,7 +197,9 @@ makePrecedenceParser ((prec, ts) : xs) p =
           EApplication
             (Locate (makeLocation p1 p2) $
               EApplication
-                (Locate (locate op) $ EVariable (QName [] VariableName (UserName . precedenceParserOperator $ delocate op)))
+                (Locate (locate op) $
+                  EVariable (QName [] (precedenceParserOperatorNamespace $ delocate op) (UserName . precedenceParserOperator $ delocate op))
+                )
                 e1
             )
             e2
@@ -216,6 +218,9 @@ makePrecedenceParser ((prec, ts) : xs) p =
     precedenceParserOperator TkMinus   = "-"
     precedenceParserOperator TkTimes   = "*"
     precedenceParserOperator TkDivides = "/"
+
+    precedenceParserOperatorNamespace TkColon = ConstructorName
+    precedenceParserOperatorNamespace _       = VariableName
 
 precedences :: [(Precedence, [Token'])]
 precedences =

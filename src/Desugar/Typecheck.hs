@@ -28,8 +28,8 @@ import qualified Core.Expression as C
 import Debug.Trace
 
 data Environment = Environment
-  { environmentTypeMap  :: Map QCoreName (PolyType CoreName) -- Variables
-  , environmentKindMap  :: Map QCoreName (Kind CoreName)     -- Kind Variables
+  { environmentTypeMap  :: Map QCoreName (PolyType CoreName) -- Type of Variables
+  , environmentKindMap  :: Map QCoreName (Kind CoreName)     -- Kind of Type Variables
   , environmentRenaming :: RenameMap
   }
 
@@ -89,6 +89,7 @@ instanciateType (PolyType as t) = do
           Nothing -> TyVariable v
         applySubstitution (TyApplication a b) = TyApplication (applySubstitution a) (applySubstitution b)
         applySubstitution (TyConstant c)      = TyConstant c
+        applySubstitution TyArrow             = TyArrow
     applySubstitution <$> (liftUnify $ substituteType t)
 
 environmentVariables :: TypecheckMonad (Set CoreName)
@@ -117,14 +118,12 @@ typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> 
       tau   <- generateName
       sigma <- generateName
       liftUnify $ unifyType (C.expressionType tTy) (TyVariable tau)
-      tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-      liftUnify $ unifyType (C.expressionType fTy) (makeTypeApplication tyArrow [TyVariable tau, TyVariable sigma])
+      liftUnify $ unifyType (C.expressionType fTy) (makeTypeApplication TyArrow [TyVariable tau, TyVariable sigma])
       return $ C.Expression (TyVariable sigma) (C.EApplication fTy tTy)
     typecheckExpression' (ELambda x e)                                = do
       tau     <- generateName
-      tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
       eTy     <- localBind x (PolyType Set.empty (TyVariable tau)) $ typecheckExpression e
-      return $ C.Expression (makeTypeApplication tyArrow [TyVariable tau, C.expressionType eTy]) (C.ELambda x eTy)
+      return $ C.Expression (makeTypeApplication TyArrow [TyVariable tau, C.expressionType eTy]) (C.ELambda x eTy)
     typecheckExpression' (ETuple es)                                  = do
       ts <- mapM typecheckExpression es
       tyTuple <- TyConstant <$> getPrimitive TypeConstructorName (replicate (length es - 1) ',')
@@ -162,46 +161,43 @@ primitiveType p
   | p `elem` [FromIntegerDeclaration, NegateDeclaration]
       = do
     tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int"
-    tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-    return $ makeTypeApplication tyArrow [tyInt, tyInt]
-  | p `elem` [ AddDeclaration, SubDeclaration, MulDeclaration, DivDeclaration, RemDeclaration
-             , LTDeclaration, LEDeclaration, GTDeclaration, GEDeclaration, EQDeclaration, NEDeclaration]
+    return $ makeTypeApplication TyArrow [tyInt, tyInt]
+  | p `elem` [ AddDeclaration, SubDeclaration, MulDeclaration, DivDeclaration, RemDeclaration ]
       = do
     tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int"
-    tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-    return $ makeTypeApplication tyArrow [tyInt, makeTypeApplication tyArrow [tyInt, tyInt]]
+    return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyInt]]
+  | p `elem` [  LTDeclaration, LEDeclaration, GTDeclaration, GEDeclaration, EQDeclaration, NEDeclaration ]
+      = do
+    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int"
+    tyBool  <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
+    return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyBool]]
   | p `elem` [ AndDeclaration, OrDeclaration]
       = do
     tyBool  <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
-    tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-    return $ makeTypeApplication tyArrow [tyBool, makeTypeApplication tyArrow [tyBool, tyBool]]
+    return $ makeTypeApplication TyArrow [tyBool, makeTypeApplication TyArrow [tyBool, tyBool]]
   | p == BindDeclaration
       = do
     a       <- TyVariable <$> generateName
     b       <- TyVariable <$> generateName
     tyIO    <- TyConstant <$> getPrimitive TypeConstructorName "IO"
-    tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-    return $ makeTypeApplication tyArrow [TyApplication tyIO a, makeTypeApplication tyArrow [makeTypeApplication tyArrow [a, TyApplication tyIO b], TyApplication tyIO b]]
+    return $ makeTypeApplication TyArrow [TyApplication tyIO a, makeTypeApplication TyArrow [makeTypeApplication TyArrow [a, TyApplication tyIO b], TyApplication tyIO b]]
   | p == ReturnDeclaration
       = do
     a       <- TyVariable <$> generateName 
     tyIO    <- TyConstant <$> getPrimitive TypeConstructorName "IO"
-    tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-    return $ makeTypeApplication tyArrow [a, TyApplication tyIO a]
+    return $ makeTypeApplication TyArrow [a, TyApplication tyIO a]
   | p == ErrorDeclaration
       = do
     a       <- TyVariable <$> generateName 
     tyList  <- TyConstant <$> getPrimitive TypeConstructorName "[]"
     tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char"
-    tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-    return $ makeTypeApplication tyArrow [TyApplication tyList tyChar, a]
+    return $ makeTypeApplication TyArrow [TyApplication tyList tyChar, a]
   | p == PutCharDeclaration
       = do
     tyUnit  <- TyConstant <$> getPrimitive TypeConstructorName "()"
     tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char"
     tyIO    <- TyConstant <$> getPrimitive TypeConstructorName "IO"
-    tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-    return $ makeTypeApplication tyArrow [tyChar, TyApplication tyIO tyUnit]
+    return $ makeTypeApplication TyArrow [tyChar, TyApplication tyIO tyUnit]
 
 typecheckBindings :: ModuleName -> DeclarationMap CoreName -> TypecheckMonad C.DeclarationMap
 typecheckBindings md bs = do
@@ -259,8 +255,7 @@ typecheckBindings md bs = do
 
 typecheckDataConstructor :: ModuleName -> MonoType CoreName -> Set CoreName -> DataConstructor CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
 typecheckDataConstructor md ty tvs (DataConstructor n ts) = do
-  tyArrow <- TyConstant <$> getPrimitive TypeConstructorName "->"
-  return $ Map.singleton (QName md ConstructorName n) $ PolyType tvs $ foldr (\a b -> makeTypeApplication tyArrow [a, b]) ty ts
+  return $ Map.singleton (QName md ConstructorName n) $ PolyType tvs $ foldr (\a b -> makeTypeApplication TyArrow [a, b]) ty ts
 
 typecheckDataDeclaration :: ModuleName -> QCoreName -> DataDeclaration CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
 typecheckDataDeclaration md n (DataDeclaration tvs dcs) = do
@@ -274,8 +269,6 @@ typecheckDataDeclarations md ds = do
 
 typecheckModule :: Module CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName), C.Module)
 typecheckModule (Module md is ds bs) = do
-  env <- environmentTypeMap <$> ask
-  traceShow env $ return ()
   ds' <- typecheckDataDeclarations md ds
   bs' <- globalBindMany ds' $ typecheckBindings md bs
   return (Map.union ds' $ Map.map fst . Map.mapKeys (QName md VariableName) $ bs', C.Module md bs')
