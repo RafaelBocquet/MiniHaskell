@@ -1,10 +1,10 @@
-module Syntax.Small.Parser where
+module Syntax.Full.Parser where
 
 import Syntax.Location
 import Syntax.Module
 import Syntax.Expression
 import Syntax.Name
-import Syntax.Small.Token
+import Syntax.Full.Token
 
 import Control.Monad.Except
 import Control.Monad.State
@@ -161,11 +161,113 @@ makeBindings =
 
 -- Module
 
-parseModule :: Parser (Module SyntaxName)
+parseModule :: Parser () -- (Module SyntaxName)
 parseModule = do
-  bs <- makeBindings =<< parseMany parseDefinition (isNotToken TkEOF)
+  t <- nextToken
+  _ <- case delocate t of
+    TkModule -> parseModuleHeader
+    _        -> return ()
+  parseModuleBody
+  -- bs <- makeBindings =<< parseMany parseDefinition (isNotToken TkEOF)
   expectToken TkEOF
-  return $ Module ["Main"] (Set.singleton ["Primitive"]) Map.empty bs
+  return ()
+  -- return $ Module ["Main"] (Set.singleton ["Primitive"]) Map.empty bs
+
+parseModuleHeader :: Parser ()
+parseModuleHeader = do
+  expectToken TkModule
+  parseModuleName
+  expectToken TkWhere
+
+parseModuleName :: Parser ModuleName
+parseModuleName = do
+  t <- nextToken
+  case delocate t of
+    TkIdentifier qs n@(c:_) | isUpper c -> return (qs ++ [n])
+    _                                   -> error "TODO"
+
+parseModuleBody :: Parser ()
+parseModuleBody = do
+  expectToken TkLBrace
+  let parseImports         = parseManySep parseImportDeclaration (expectToken TkSemiColon) (isToken TkImport) (isToken TkSemiColon)
+      parseTopDeclarations = parseManySep parseTopDeclaration (expectToken TkSemiColon) (isNotToken TkRBrace) (isToken TkSemiColon)
+  parseImports
+  maybeToken TkSemiColon
+  parseTopDeclarations
+  expectToken TkRBrace
+
+parseImportDeclaration :: Parser ()
+parseImportDeclaration = do
+  t <- nextToken
+  case delocate t of
+    TkImport    -> do
+      consumeToken
+      maybeToken (TkIdentifier [] "qualified")
+      parseModuleName
+      as <- maybeToken (TkIdentifier [] "as")
+      if as
+        then
+          parseModuleName
+        else
+          return []
+      return ()
+
+    TkSemiColon -> return ()
+    _           -> error ""
+
+parseTopDeclaration :: Parser ()
+parseTopDeclaration = do
+  t <- nextToken
+  case delocate t of
+    --TkType                   -> parseTypeDeclaration
+    --TkData                   -> parseDataDeclaration
+    --TkNewtype                -> parseNewtypeDeclaration
+    --TkClass                  -> parseClassDeclaration
+    --TkInstance               -> parseInstanceDeclaration
+    --TkDefault                -> parseDefaultDeclaration
+    --t | isFixity t           -> parseFixityDeclaration
+    TkSemiColon                -> return ()
+    t | isVariableIdentifier t -> do
+      consumeToken
+      t <- nextToken
+      case delocate t of
+        TkComma       -> do
+          consumeToken
+          parseTypeSignatureDeclaration
+        TkDoubleColon -> do
+          consumeToken
+          parseTypeSignature
+        _             -> parseDeclaration
+    _                          -> error ""
+
+parseTypeSignatureDeclaration :: Parser ()
+parseTypeSignatureDeclaration = do
+  t <- nextToken
+  case delocate t of
+    t | isVariableIdentifier t ->do
+      consumeToken
+      t <- nextToken
+      case delocate t of
+        TkComma       -> do
+          consumeToken
+          parseTypeSignatureDeclaration
+        TkDoubleColon -> do
+          consumeToken
+          parseTypeSignature
+        _             -> error ""
+    _ -> error ""
+
+parseTypeSignature :: Parser ()
+parseTypeSignature = do
+  parseContext
+  parseType
+
+parseContext :: Parser ()
+parseContext = do
+  t <- nextToken
+  case delocate t of
+
+{-
 
 parseDefinition :: Parser (Binding SyntaxName)
 parseDefinition = do
@@ -473,23 +575,9 @@ parseList = do
           b
   return $ foldr makeCons nil xs
 
+-}
+
 -- Tokens
-
-parseIdentifier0 :: Parser String
-parseIdentifier0 = do
-  t <- nextToken
-  consumeToken
-  case delocate t of
-    TkIdentifier0 s -> return s
-    _               -> throwError $ ExpectedIdentifier0 t
-
-parseIdentifier1 :: Parser String
-parseIdentifier1 = do
-  t <- nextToken
-  consumeToken
-  case delocate t of
-    TkIdentifier1 s -> return s
-    _               -> throwError $ ExpectedIdentifier1 t
 
 expectToken :: Token' -> Parser ()
 expectToken t = do
@@ -497,19 +585,18 @@ expectToken t = do
   when (t /= delocate t') (throwError $ ExpectedToken t t')
   consumeToken
 
-maybeToken :: Token' -> Parser ()
+maybeToken :: Token' -> Parser Bool
 maybeToken t = do
   t' <- nextToken
-  when (t == delocate t') consumeToken
+  if t == delocate t'
+    then do
+      consumeToken
+      return True
+    else
+      return False
 
 isToken :: Token' -> Parser Bool
 isToken = satisfy . (==)
-
-isIdentifier0 :: Parser Bool
-isIdentifier0 = satisfy (\x -> case x of { TkIdentifier0 _ -> True ; _ -> False })
-
-isIdentifier1 :: Parser Bool
-isIdentifier1 = satisfy (\x -> case x of { TkIdentifier1 _ -> True ; _ -> False })
 
 isNotToken :: Token' -> Parser Bool
 isNotToken = satisfy . (/=)

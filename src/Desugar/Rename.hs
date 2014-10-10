@@ -29,6 +29,7 @@ import Debug.Trace
 
 data RenameError = UnboundName QSyntaxName
                  | BoundNameOverlap QSyntaxName [QCoreName]
+                 | DuplicatePatternVariable SyntaxName
                  deriving (Show)
 
 data RenameEntry = RenameLocal QCoreName
@@ -43,10 +44,16 @@ instance Monoid RenameEntry where
 
 type RenameMap   = Map QSyntaxName RenameEntry
 
-lookupRename :: QSyntaxName -> RenameMap -> RenameEntry
-lookupRename n m = case Map.lookup n m of
-  Just x  -> x
-  Nothing -> RenameGlobal []
+lookupRename :: QSyntaxName -> RenameMonad QCoreName
+lookupRename n = do
+  m <- ask
+  case Map.lookup n m of
+    Just n' -> case n' of
+      RenameGlobal []  -> throwError $ UnboundName n
+      RenameGlobal [x] -> return $ x
+      RenameGlobal xs  -> throwError $ BoundNameOverlap n xs
+      RenameLocal x    -> return $ x
+    Nothing -> throwError $ UnboundName n
 
 type RenameMonad = ExceptT RenameError (ReaderT RenameMap (State Int))
 
@@ -113,6 +120,40 @@ renameTypeVariableNames md = renameMany (renameTypeVariableName md)
 renameTypeConstructorNames :: ModuleName -> RenamingIn [SyntaxName] [CoreName] a
 renameTypeConstructorNames md = renameMany (renameTypeConstructorName md)
 
+renamePattern :: RenamingIn (Pattern SyntaxName) (Pattern CoreName) c
+renamePattern pat m = renamePattern' Set.empty pat (\_ -> m)
+  where
+    renamePattern' :: Set SyntaxName -> Pattern SyntaxName -> (Set SyntaxName -> RenameMonad c) -> RenameMonad (Pattern CoreName, c)
+    renamePattern' st (PAs v pat) m
+      | Set.member v st                      = throwError $ DuplicatePatternVariable v
+      | otherwise                            = do
+        (v', (pat', c)) <- renameVariableName [] v $ renamePattern' (Set.insert v st) pat m
+        return (PAs v' pat', c)
+    renamePattern' st PWildcard m            = do
+      c <- m st
+      return (PWildcard, c) 
+    renamePattern' st (PConstructor con pats) m = do
+      con' <- lookupRename con
+      (pats', c) <- foldr
+        (\v acc -> \st' -> do
+          (v', (vs, rv)) <- renamePattern' st' v acc
+          return $ (v' : vs, rv)
+        )
+        (\st' -> do
+          m' <- m st'
+          return ([], m')
+        )
+        pats
+        st
+      return (PConstructor con' pats', c)
+    renamePattern' st (PLiteralInt i) m      = do
+      c <- m st
+      return (PLiteralInt i, c) 
+    renamePattern' st (PLiteralChar ch) m     = do
+      c <- m st
+      return (PLiteralChar ch, c)
+
+
 renameExpression :: Renaming (Expression SyntaxName) (Expression CoreName)
 renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
   where
@@ -120,12 +161,7 @@ renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
     renameExpression' (EInteger i)             = return $ EInteger i
     renameExpression' (EChar c)                = return $ EChar c
     renameExpression' (EVariable n)            = do
-      n' <- lookupRename n <$> ask
-      case n' of
-        RenameGlobal []  -> throwError $ UnboundName n
-        RenameGlobal [x] -> return $ EVariable x
-        RenameGlobal xs  -> throwError $ BoundNameOverlap n xs
-        RenameLocal x    -> return $ EVariable x
+      EVariable <$> lookupRename n
     renameExpression' (EApplication f t)       = do
       f' <- renameExpression f
       t' <- renameExpression t
@@ -136,20 +172,23 @@ renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
     renameExpression' (ETuple xs)              = do
       xs' <- renameExpression `mapM` xs
       return $ ETuple xs'
-    renameExpression' (EIf c a b)              = do
-      c' <- renameExpression c
-      a' <- renameExpression a
-      b' <- renameExpression b
-      return $ EIf c' a' b'
+    --renameExpression' (EIf c a b)              = do
+    --  c' <- renameExpression c
+    --  a' <- renameExpression a
+    --  b' <- renameExpression b
+    --  return $ EIf c' a' b'
     renameExpression' (ELet bs e)              = do
       (bs', e') <- renameDeclarations [] bs (renameExpression e)
       return $ ELet bs' e'
+    --renameExpression' (ECase e pats)           = do
+    --  e' <- renameExpression e
 
-    renameExpression' (EListCase e nil x xs r) = do
-      e' <- renameExpression e
-      nil' <- renameExpression nil
-      (x', (xs', r')) <- renameVariableName [] x $ renameVariableName [] xs $ renameExpression r
-      return $ EListCase e' nil' x' xs' r'
+
+    --renameExpression' (EListCase e nil x xs r) = do
+    --  e' <- renameExpression e
+    --  nil' <- renameExpression nil
+    --  (x', (xs', r')) <- renameVariableName [] x $ renameVariableName [] xs $ renameExpression r
+    --  return $ EListCase e' nil' x' xs' r'
 
 renameDeclaration :: Renaming (Declaration SyntaxName) (Declaration CoreName)
 renameDeclaration (Declaration e)             = Declaration <$> renameExpression e
@@ -164,17 +203,12 @@ renameDeclaration (PrimitiveDeclaration prim) = return $ PrimitiveDeclaration pr
 
 renameMonoType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
 renameMonoType (TyVariable n) = do
-  n' <- lookupRename (QName [] TypeVariableName n) <$> ask
-  case n' of
-    RenameLocal (QName [] TypeVariableName v) -> return $ TyVariable v
-    _                                         -> throwError $ UnboundName (QName [] TypeVariableName n)
+  x <- lookupRename (QName [] TypeVariableName n)
+  case x of
+    QName [] TypeVariableName v -> return $ TyVariable v
+    _                           -> throwError $ UnboundName (QName [] TypeVariableName n)
 renameMonoType (TyConstant n) = do
-  n' <- lookupRename n <$> ask
-  case n' of
-    RenameGlobal []  -> throwError $ UnboundName n
-    RenameGlobal [x] -> return $ TyConstant x
-    RenameGlobal xs  -> throwError $ BoundNameOverlap n xs
-    RenameLocal x    -> return $ TyConstant x
+  TyConstant <$> lookupRename n
 renameMonoType (TyApplication a b) = liftM2 TyApplication (renameMonoType a) (renameMonoType b)
 
 renameDataConstructor :: ModuleName -> RenamingIn (DataConstructor SyntaxName) (DataConstructor CoreName) c

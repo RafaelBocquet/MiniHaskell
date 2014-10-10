@@ -6,7 +6,8 @@ import Control.Monad.Reader
 import Control.Applicative
 
 import Data.Maybe
-import Data.Foldable (foldlM)
+import Data.Monoid
+import Data.Foldable (foldlM, foldrM)
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -34,9 +35,11 @@ data Environment = Environment
   }
 
 data TypecheckError = UnboundVariable QCoreName
+                    | UnboundConstructor QCoreName
                     | TCUnifyError UnifyError
                     | InTypechecking (Expression CoreName) TypecheckError
                     | UnknownPrimitive String
+                    | UnknownError
                     deriving (Show)
 
 type TypecheckMonad = ReaderT Environment (ExceptT TypecheckError (StateT Int UnifyMonad))
@@ -95,6 +98,55 @@ instanciateType (PolyType as t) = do
 environmentVariables :: TypecheckMonad (Set CoreName)
 environmentVariables = Set.unions . (freePolyTypeVariables <$>) . Map.elems . environmentTypeMap <$> ask
 
+typecheckPatterns :: [(Pattern CoreName, Expression CoreName)] -> TypecheckMonad C.PatternGroup
+typecheckPatterns pats = do
+  pTy <- foldlM patternGroupCombine C.NoPatternGroupType =<< patternGroupType `mapM` (fst <$> pats)
+  case pTy of
+    C.NoPatternGroupType      -> case pats of
+      []                -> throwError UnknownError
+      (PWildcard, e):[] -> C.PNone <$> typecheckExpression e
+      (pat, e):_        -> {- throwWarning -} C.PNone <$> typecheckExpression e
+    C.IntPatternGroupType     ->
+      foldlM
+        (\(C.PInt ics df) (pat, e) -> do
+          e' <- typecheckExpression e
+          case pat of
+            PLiteralInt i -> return $ C.PInt (Map.insertWith (flip const) i e' ics) df
+            PWildcard     -> return $ C.PInt ics (maybe (Just e') Just df)
+        )
+        (C.PInt Map.empty Nothing)
+        pats
+    C.CharPatternGroupType    -> throwError UnknownError
+    C.DataPatternGroupType dc -> 
+      foldlM
+        (\(C.PData dcs df) (pat, e) -> do
+          e' <- typecheckExpression e
+          case pat of
+            PConstructor con cpats -> throwError UnknownError -- return $ C.PData (Map.insertWith (flip const) i e' ics) df
+            PWildcard              -> return $ C.PData dcs (maybe (Just e') Just df)
+        )
+        (C.PData Map.empty Nothing)
+        pats
+  where
+    patternGroupType :: Pattern CoreName -> TypecheckMonad C.PatternGroupType
+    patternGroupType (PAs _ pat)             = patternGroupType pat
+    patternGroupType PWildcard               = return $ C.NoPatternGroupType
+    patternGroupType (PConstructor con pats) = do
+      t <- Map.lookup con . environmentTypeMap <$> ask
+      case t of
+        Nothing              -> throwError $ UnboundConstructor con
+        Just (PolyType _ ty) -> C.DataPatternGroupType <$> functionResultType ty
+    patternGroupType (PLiteralInt _)         = return $ C.IntPatternGroupType
+    patternGroupType (PLiteralChar _)        = return $ C.CharPatternGroupType
+
+    patternGroupCombine C.NoPatternGroupType = return
+
+    functionResultType (TyApplication (TyApplication TyArrow a) b) = functionResultType b
+    functionResultType (TyConstant a)                              = return a
+    functionResultType (TyApplication a b)                         = functionResultType a
+    functionResultType _                                           = throwError UnknownError
+
+
 typecheckExpression :: Expression CoreName -> TypecheckMonad C.Expression
 typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> throwError $ InTypechecking e err)
   where
@@ -128,29 +180,33 @@ typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> 
       ts <- mapM typecheckExpression es
       tyTuple <- TyConstant <$> getPrimitive TypeConstructorName (replicate (length es - 1) ',')
       return $ C.Expression (makeTypeApplication tyTuple (C.expressionType <$> ts)) (C.ETuple ts)
-    typecheckExpression' (EIf c a b)                                  = do
-      cTy <- typecheckExpression c
-      aTy <- typecheckExpression a
-      bTy <- typecheckExpression b
-      tyBool <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
-      liftUnify $ unifyType (C.expressionType cTy) tyBool
-      liftUnify $ unifyMonoType (C.expressionType aTy) (C.expressionType bTy)
-      return $ C.Expression (C.expressionType aTy) (C.EIf cTy aTy bTy)
     typecheckExpression' (ELet bs e)                                  = do
       bts <- typecheckBindings [] bs
       eTy <- localBindMany (Map.map fst bts) $ typecheckExpression e
       return $ C.Expression (C.expressionType eTy) (C.ELet bts eTy)
-    typecheckExpression' (EListCase e nil x xs r)                     = do
-      eTy    <- typecheckExpression e
-      tau    <- generateName
-      tyList <- TyConstant <$> getPrimitive TypeConstructorName "[]"
-      liftUnify $ unifyType (C.expressionType eTy) (TyApplication tyList (TyVariable tau))
-      nilTy  <- typecheckExpression nil
-      rTy    <- localBind x (PolyType Set.empty $ TyVariable tau)
-              $ localBind xs (PolyType Set.empty $ TyApplication tyList (TyVariable tau))
-              $ typecheckExpression r
-      liftUnify $ unifyType (C.expressionType nilTy) (C.expressionType rTy)
-      return $ C.Expression (C.expressionType nilTy) (C.EListCase eTy nilTy x xs rTy)
+  --  typecheckExpression' (ECase e pats)                               = do
+    --  e' <- typecheckExpression' e
+
+      -- ???
+    --typecheckExpression' (EIf c a b)                                  = do
+    --  cTy <- typecheckExpression c
+    --  aTy <- typecheckExpression a
+    --  bTy <- typecheckExpression b
+    --  tyBool <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
+    --  liftUnify $ unifyType (C.expressionType cTy) tyBool
+    --  liftUnify $ unifyMonoType (C.expressionType aTy) (C.expressionType bTy)
+    --  return $ C.Expression (C.expressionType aTy) (C.EIf cTy aTy bTy)
+    --typecheckExpression' (EListCase e nil x xs r)                     = do
+    --  eTy    <- typecheckExpression e
+    --  tau    <- generateName
+    --  tyList <- TyConstant <$> getPrimitive TypeConstructorName "[]"
+    --  liftUnify $ unifyType (C.expressionType eTy) (TyApplication tyList (TyVariable tau))
+    --  nilTy  <- typecheckExpression nil
+    --  rTy    <- localBind x (PolyType Set.empty $ TyVariable tau)
+    --          $ localBind xs (PolyType Set.empty $ TyApplication tyList (TyVariable tau))
+    --          $ typecheckExpression r
+    --  liftUnify $ unifyType (C.expressionType nilTy) (C.expressionType rTy)
+    --  return $ C.Expression (C.expressionType nilTy) (C.EListCase eTy nilTy x xs rTy)
 
 typecheckDeclaration :: Declaration CoreName -> TypecheckMonad C.Declaration
 typecheckDeclaration (Declaration e)             = C.Declaration <$> typecheckExpression e
@@ -158,46 +214,10 @@ typecheckDeclaration (PrimitiveDeclaration prim) = return $ C.PrimitiveDeclarati
 
 primitiveType :: PrimitiveDeclaration -> TypecheckMonad (MonoType CoreName)
 primitiveType p 
-  | p `elem` [FromIntegerDeclaration, NegateDeclaration]
+  | p `elem` [ PrimitiveIntAdd, PrimitiveIntSub, PrimitiveIntMul, PrimitiveIntDiv, PrimitiveIntRem ]
       = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int"
-    return $ makeTypeApplication TyArrow [tyInt, tyInt]
-  | p `elem` [ AddDeclaration, SubDeclaration, MulDeclaration, DivDeclaration, RemDeclaration ]
-      = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int"
+    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int#"
     return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyInt]]
-  | p `elem` [  LTDeclaration, LEDeclaration, GTDeclaration, GEDeclaration, EQDeclaration, NEDeclaration ]
-      = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int"
-    tyBool  <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
-    return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyBool]]
-  | p `elem` [ AndDeclaration, OrDeclaration]
-      = do
-    tyBool  <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
-    return $ makeTypeApplication TyArrow [tyBool, makeTypeApplication TyArrow [tyBool, tyBool]]
-  | p == BindDeclaration
-      = do
-    a       <- TyVariable <$> generateName
-    b       <- TyVariable <$> generateName
-    tyIO    <- TyConstant <$> getPrimitive TypeConstructorName "IO"
-    return $ makeTypeApplication TyArrow [TyApplication tyIO a, makeTypeApplication TyArrow [makeTypeApplication TyArrow [a, TyApplication tyIO b], TyApplication tyIO b]]
-  | p == ReturnDeclaration
-      = do
-    a       <- TyVariable <$> generateName 
-    tyIO    <- TyConstant <$> getPrimitive TypeConstructorName "IO"
-    return $ makeTypeApplication TyArrow [a, TyApplication tyIO a]
-  | p == ErrorDeclaration
-      = do
-    a       <- TyVariable <$> generateName 
-    tyList  <- TyConstant <$> getPrimitive TypeConstructorName "[]"
-    tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char"
-    return $ makeTypeApplication TyArrow [TyApplication tyList tyChar, a]
-  | p == PutCharDeclaration
-      = do
-    tyUnit  <- TyConstant <$> getPrimitive TypeConstructorName "()"
-    tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char"
-    tyIO    <- TyConstant <$> getPrimitive TypeConstructorName "IO"
-    return $ makeTypeApplication TyArrow [tyChar, TyApplication tyIO tyUnit]
 
 typecheckBindings :: ModuleName -> DeclarationMap CoreName -> TypecheckMonad C.DeclarationMap
 typecheckBindings md bs = do

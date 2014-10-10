@@ -20,10 +20,21 @@ data Expression' = EInteger Integer                                             
                  | EApplication Expression Expression                           -- ~OK
                  | ELambda CoreName Expression                                  -- ~OK
                  | ETuple [Expression]                                          -- OK
-                 | EIf Expression Expression Expression                         -- OK
                  | ELet DeclarationMap Expression                               -- ~OK
-                 | EListCase Expression Expression CoreName CoreName Expression -- OK
+                 | ECase Expression PatternGroup
                  deriving (Show)
+
+data PatternGroupType = DataPatternGroupType QCoreName
+                      | IntPatternGroupType
+                      | CharPatternGroupType
+                      | NoPatternGroupType
+                      deriving (Show)
+
+data PatternGroup = PData (Map CoreName ([CoreName], Expression)) (Maybe Expression)
+                  | PInt (Map Int Expression) (Maybe Expression)
+                  | PChar (Map Char Expression) (Maybe Expression)
+                  | PNone Expression
+                  deriving (Show)
 
 data Expression = Expression
   { expressionType  :: MonoType CoreName

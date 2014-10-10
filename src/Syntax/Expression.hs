@@ -18,9 +18,8 @@ data Expression' n = EInteger Integer
                    | EApplication (Expression n) (Expression n)
                    | ELambda n (Expression n)
                    | ETuple [Expression n]
-                   | EIf (Expression n) (Expression n) (Expression n)
                    | ELet (DeclarationMap n) (Expression n)
-                   | EListCase (Expression n) (Expression n) n n (Expression n)
+                   | ECase (Expression n) [(Pattern n, Expression n)]
                    deriving (Show)
 type Expression n = Locate (Expression' n)
 
@@ -39,41 +38,56 @@ expressionFreeVariables = expressionFreeVariables' . delocate
       Set.delete (QName [] VariableName x) (expressionFreeVariables e)
     expressionFreeVariables' (ETuple es)                                  =
       Set.unions $ expressionFreeVariables <$> es
-    expressionFreeVariables' (EIf c a b)                                  =
-      Set.unions [expressionFreeVariables c, expressionFreeVariables a, expressionFreeVariables b]
     expressionFreeVariables' (ELet bs e)                                  =
       Set.unions (expressionFreeVariables e : (declarationFreeVariables <$> Map.elems bs)) `Set.difference` Set.map (QName [] VariableName) (Map.keysSet bs)
-    expressionFreeVariables' (EListCase e nil x xs r)                     =
-      Set.unions [ expressionFreeVariables e
-                 , expressionFreeVariables nil
-                 , Set.delete (QName [] VariableName x) . Set.delete (QName [] VariableName xs) $ expressionFreeVariables r
-                 ]
+    expressionFreeVariables' (ECase e pats)                               =
+      Set.union
+        (expressionFreeVariables e)
+        (Set.unions $ fmap (\(pat, pate) -> expressionFreeVariables pate `Set.difference` patternVariables pat) pats)
 
 declarationFreeVariables :: Ord n => Declaration n -> Set (QName n)
 declarationFreeVariables (Declaration e)          = expressionFreeVariables e
 declarationFreeVariables (PrimitiveDeclaration _) = Set.empty
 
+data Pattern n = PAs n (Pattern n)
+               | PWildcard
+               | PConstructor (QName n) [Pattern n]
+               | PLiteralInt Int
+               | PLiteralChar Char
+               deriving (Show)
+
+-- PVariable v ~ PAs v PWildcard
+
+patternVariables :: Ord n => Pattern n -> Set (QName n)
+patternVariables (PAs v pat)           = Set.insert (QName [] VariableName v) (patternVariables pat)
+patternVariables PWildcard             = Set.empty
+patternVariables (PConstructor _ pats) = Set.unions $ patternVariables <$> pats
+patternVariables (PLiteralInt _)       = Set.empty
+patternVariables (PLiteralChar _)      = Set.empty
+
 type Binding n    = Locate (n, [n], Expression n)
 
-data PrimitiveDeclaration = FromIntegerDeclaration
-                          | NegateDeclaration
-                          | AddDeclaration
-                          | SubDeclaration
-                          | MulDeclaration
-                          | DivDeclaration
-                          | RemDeclaration
-                          | LTDeclaration
-                          | LEDeclaration
-                          | GTDeclaration
-                          | GEDeclaration
-                          | EQDeclaration
-                          | NEDeclaration
-                          | AndDeclaration
-                          | OrDeclaration
-                          | BindDeclaration
-                          | ReturnDeclaration
-                          | ErrorDeclaration
-                          | PutCharDeclaration
+data PrimitiveDeclaration = PrimitiveIntAdd
+                          | PrimitiveIntSub
+                          | PrimitiveIntMul
+                          | PrimitiveIntDiv
+                          | PrimitiveIntRem
+                          | PrimitiveIntNegate
+                          | PrimitiveIntLT
+                          | PrimitiveIntLE
+                          | PrimitiveIntGT
+                          | PrimitiveIntGE
+                          | PrimitiveIntEQ
+                          | PrimitiveIntNE
+                          | PrimitiveOrd
+                          | PrimitiveChr
+                          | PrimitiveCharLT
+                          | PrimitiveCharLE
+                          | PrimitiveCharGT
+                          | PrimitiveCharGE
+                          | PrimitiveCharEQ
+                          | PrimitiveCharNE
+
                           deriving (Show, Eq, Ord)
 data Declaration n        = Declaration (Expression n)
                           | PrimitiveDeclaration PrimitiveDeclaration
@@ -81,13 +95,8 @@ data Declaration n        = Declaration (Expression n)
 type DeclarationMap n     = Map n (Declaration n)
 
 data DataConstructor n        = DataConstructor n [MonoType n]
-data PrimitiveDataDeclaration = ArrowDataDeclaration
-                              | IntDataDeclaration
-                              | CharDataDeclaration
-                              | BoolDataDeclaration
-                              | ListDataDeclaration
-                              | UnitDataDeclaration
-                              | TupleDataDeclaration Int
+data PrimitiveDataDeclaration = UnboxedIntDataDeclaration
+                              | UnboxedCharDataDeclaration
                               | IODataDeclaration
                               deriving (Show, Eq, Ord)
 data DataDeclaration n        = DataDeclaration [n] [DataConstructor n]
