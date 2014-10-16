@@ -154,7 +154,7 @@ makeBindings =
     (\(Locate loc (name, xs, e)) acc -> do
       case Map.lookup name acc of
         Nothing ->
-          return $ Map.insert name (Declaration $ foldr (\x -> Locate loc . ELambda x) e xs) acc
+          return $ Map.insert name (Declaration Nothing $ foldr (\x -> Locate loc . ELambda x) e xs) acc
         Just _  -> throwError $ DuplicateBinding name
     )
     Map.empty

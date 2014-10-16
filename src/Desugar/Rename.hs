@@ -191,15 +191,19 @@ renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
     --  return $ EListCase e' nil' x' xs' r'
 
 renameDeclaration :: Renaming (Declaration SyntaxName) (Declaration CoreName)
-renameDeclaration (Declaration e)             = Declaration <$> renameExpression e
+renameDeclaration (Declaration Nothing e)     = Declaration Nothing <$> renameExpression e
+renameDeclaration (Declaration (Just t) e)    = do
+  t' <- renamePolyType t
+  e' <- renameExpression e
+  return $ Declaration (Just t') e'
 renameDeclaration (PrimitiveDeclaration prim) = return $ PrimitiveDeclaration prim
 
---renamePolyType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
---renamePolyType t = do
---    ks <- Map.keysSet <$> ask
---    let fv = Set.toList . Set.filter (\v -> not $ Set.member (QName [] TypeVariableName v) ks) $ freeTypeVariables t
---    (_, t') <- renameTypeVariableNames [] fv $ renameMonoType t
---    return t'
+renamePolyType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
+renamePolyType t = do
+    ks <- Map.keysSet <$> ask
+    let fv = Set.toList . Set.filter (\v -> not $ Set.member (QName [] TypeVariableName v) ks) $ freeTypeVariables t
+    (_, t') <- renameTypeVariableNames [] fv $ renameMonoType t
+    return t'
 
 renameMonoType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
 renameMonoType (TyVariable n) = do
@@ -219,11 +223,11 @@ renameDataConstructor md (DataConstructor n ts) m = do
     return (ts', c)
   return (DataConstructor n' ts', c')
 
-renameDataDeclaration :: ModuleName -> RenamingIn (DataDeclaration SyntaxName) (DataDeclaration CoreName) c
-renameDataDeclaration md (DataDeclaration tvs dcs) m           = do
+renameTypeDeclaration :: ModuleName -> RenamingIn (TypeDeclaration SyntaxName) (TypeDeclaration CoreName) c
+renameTypeDeclaration md (DataDeclaration tvs dcs) m           = do
   (tvs', (dcs', c)) <- renameTypeVariableNames [] tvs $ renameMany (renameDataConstructor md) dcs m
   return (DataDeclaration tvs' dcs', c)
-renameDataDeclaration md (PrimitiveDataDeclaration prim) m = do
+renameTypeDeclaration md (PrimitiveDataDeclaration prim) m = do
   c <- m
   return (PrimitiveDataDeclaration prim, c)
 
@@ -247,10 +251,10 @@ renameMap md ns f mp m = do
 renameDeclarations :: ModuleName -> RenamingIn (DeclarationMap SyntaxName) (DeclarationMap CoreName) c
 renameDeclarations md = renameMap md VariableName renameDeclaration
 
-renameDataDeclarations :: ModuleName -> RenamingIn (DataDeclarationMap SyntaxName) (DataDeclarationMap CoreName) c
-renameDataDeclarations md = renameMapIn md TypeConstructorName (renameDataDeclaration md)
+renameTypeDeclarations :: ModuleName -> RenamingIn (TypeDeclarationMap SyntaxName) (TypeDeclarationMap CoreName) c
+renameTypeDeclarations md = renameMapIn md TypeConstructorName (renameTypeDeclaration md)
 
 renameModule :: Module SyntaxName -> RenameMonad (RenameMap, Module CoreName)
 renameModule (Module mn is ds bs) = do
-  (ds', (bs', rMap)) <- renameDataDeclarations mn ds $ renameDeclarations mn bs $ ask
+  (ds', (bs', rMap)) <- renameTypeDeclarations mn ds $ renameDeclarations mn bs $ ask
   return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' bs')

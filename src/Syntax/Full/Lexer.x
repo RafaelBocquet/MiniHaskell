@@ -1,206 +1,94 @@
 {
-  
+module Syntax.Full.Lexer where
+
+import Syntax.Full.Token
 }
+
+%wrapper "posn"
 
 -- Character classes
 
-symbolChar :: [Char]
-symbolChar = "!#$%&*+./<=>?@\\^|-~"
+$newline = [\n\r\f]
+
+$digit = [0-9]
+$bit   = [0-1]
+$hexit = [0-9a-fA-F]
+$octit = [0-7]
+
+$symbolChar     = [!#\$\%&\*\+\.\/\<=>\?@\\\^\|\-\~:]
+$smallChar      = [a-z]
+$largeChar      = [A-Z]
+$identifierChar = [a-zA-Z0-9_\']
+
+@varId      = $smallChar $identifierChar* 
+@conId      = $largeChar $identifierChar* 
+@symId      = $symbolChar+
+@moduleName = (@conId \.)*
+
+@integer = $digit+
+
+:-
+
+($white | $newline)+;
 
 -- Reserved symbols
-
-symbols :: [(String, Token')]
-symbols = 
-  [ ("..", TkDoubleDot)
-  , (":", TkColon)
-  , ("::", TkDoubleColon)
-  , ("=", TkEqual)
-  , ("\\", TkLambda)
-  , ("|", TkPipe)
-  , ("<-", TkLArrow)
-  , ("->", TkRArrow)
-  , ("@", TkAt)
-  , ("~", TkTilde)
-  , ("=>", TkFatArrow)
-  ]
+".."       { const (const TkDoubleDot) }
+"::"       { const (const TkDoubleColon) }
+"="        { const (const TkEqual) }
+"\\"       { const (const TkLambda) }
+"|"        { const (const TkPipe) }
+"<-"       { const (const TkLArrow) }
+"->"       { const (const TkRArrow) }
+"@"        { const (const TkAt) }
+"~"        { const (const TkTilde) }
+"=>"       { const (const TkFatArrow) }
 
 -- Reserved keywords
 
-keywords :: [(String, Token')]
-keywords =
-  [ ("case", TkCase)
-  , ("class", TkClass)
-  , ("data", TkData)
-  , ("default", TkDefault)
-  , ("deriving", TkDeriving)
-  , ("do", TkDo)
-  , ("else", TkElse)
+"case"     { const (const TkCase) }
+"class"    { const (const TkClass) }
+"data"     { const (const TkData) }
+"default"  { const (const TkDefault) }
+"deriving" { const (const TkDeriving) }
+"do"       { const (const TkDo) }
+"else"     { const (const TkElse) }
  
-  , ("if", TkIf)
-  , ("import", TkImport)
-  , ("in", TkIn)
-  , ("infix", TkInfix)
-  , ("infixl", TkInfixl)
-  , ("infixr", TkInfixr)
-  , ("instance", TkInstance)
+"if"       { const (const TkIf) }
+"import"   { const (const TkImport) }
+"in"       { const (const TkIn) }
+"infix"    { const (const TkInfix) }
+"infixl"   { const (const TkInfixl) }
+"infixr"   { const (const TkInfixr) }
+"instance" { const (const TkInstance) }
  
-  , ("let", TkLet)
-  , ("module", TkModule)
-  , ("newtype", TkNewtype)
-  , ("of", TkOf)
-  , ("then", TkThen)
-  , ("type", TkType)
-  , ("where", TkWhere)
-  , ("_", TkUnderscore)
-  ]
+"let"      { const (const TkLet) }
+"module"   { const (const TkModule) }
+"newtype"  { const (const TkNewtype) }
+"of"       { const (const TkOf) }
+"then"     { const (const TkThen) }
+"type"     { const (const TkType) }
+"where"    { const (const TkWhere) }
+"_"        { const (const TkUnderscore) }
 
-lexToken :: Lexer Token
-lexToken = do
-  c <- nextChar
-  if isSpace c
-    then consumeChar >> lexToken
-    else do
-      p <- currentPosition
-      tok <- case c of
-        -- EOF
-        '\0'                    -> return TkEOF
-        -- Literals
-        '\"'                    -> TkString <$> lexString
-        '\''                    -> TkChar <$> lexChar
-        _ | isDigit c           -> TkInteger <$> lexInteger
-        -- 
-        '('                     -> consumeChar >> return TkLParen
-        ')'                     -> consumeChar >> return TkRParen
-        '{'                     -> do
-          consumeChar
-          c <- nextChar
-          if c == '-'
-            then (delocate <$>) $ consumeChar >> lexMultiLineComment >> lexToken
-            else return TkLBrace
-        '}'                     -> consumeChar >> return TkRBrace
-        '['                     -> consumeChar >> return TkLBracket
-        ']'                     -> consumeChar >> return TkRBracket
-        ','                     -> consumeChar >> return TkComma
-        ';'                     -> consumeChar >> return TkSemiColon
-        _ | c `elem` symbolChar -> lexSymbol
-        _ | isAlpha c           -> lexIdentifier
-        _                       -> throwError (LexError p)
-      p' <- currentPosition
-      return $ Locate (makeLocation p p') tok
+\(          { const (const TkLParen) }
+\)          { const (const TkRParen) }
+\,          { const (const TkComma) }
+\;          { const (const TkSemiColon) }
+\[          { const (const TkLBracket) }
+\]          { const (const TkRBracket) }
+`           { const (const TkBackTick) }
+\{          { const (const TkLBrace) }
+\}          { const (const TkRBrace) }
 
-lexMultiLineComment :: Lexer ()
-lexMultiLineComment = do
-  c <- nextChar
-  case c of
-    '\0' -> throwError UnterminatedComment
-    '-'  -> do
-      consumeChar
-      c <- nextChar
-      if c == '}'
-        then consumeChar
-        else lexMultiLineComment
-    _    -> consumeChar >> lexMultiLineComment
+@moduleName @varId { const (TkIdentifier []) }
+@moduleName @conId { const (TkIdentifier []) }
+@moduleName @symId { const (TkIdentifier []) }
 
-lexSingleLineComment :: Lexer ()
-lexSingleLineComment = do
-  c <- nextChar
-  case c of
-    '\0' -> return ()
-    '\n' -> consumeChar
-    _    -> consumeChar >> lexSingleLineComment
+@integer    { const (TkInteger . read) }
 
-lexIdentifier :: Lexer Token'
-lexIdentifier = do
-    str@(c:_) <- lexIdentifier'
-    case lookup str keywords of
-      Just t  -> return t
-      Nothing | isLower c -> return $ TkIdentifier [] str
-      Nothing | isUpper c -> do
-        c <- nextChar
-        if c /= '.'
-          then return $ TkIdentifier [] str
-          else do
-            TkIdentifier qs n <- consumeChar >> lexIdentifier
-            return $ TkIdentifier (str : qs) n
-  where
-    lexIdentifier' :: Lexer String
-    lexIdentifier' = do
-      c <- nextChar
-      if isAlphaNum c || c `elem` "_'"
-        then do
-          consumeChar
-          (c :) <$> lexIdentifier'
-        else return ""
+{
 
-lexSymbol :: Lexer Token'
-lexSymbol = do
-    p         <- currentPosition
-    str@(c:_) <- lexSymbol'
-    case lookup str symbols of
-      Nothing | str == "--" -> (delocate <$>) $ lexSingleLineComment >> lexToken
-      Nothing               -> return $ TkIdentifier []  str
-      Just tok              -> return tok
-  where
-    lexSymbol' = do
-      c <- nextChar
-      if c `elem` symbolChar
-        then consumeChar >> (c :) <$> lexSymbol'
-        else return ""
+ar = alexScanTokens "ok"
+tokenise = alexScanTokens
 
-lexInteger :: Lexer Integer
-lexInteger = lexInteger' 0
-  where
-    lexInteger' :: Integer -> Lexer Integer
-    lexInteger' i = do
-      c <- nextChar
-      if isDigit c
-        then consumeChar >> lexInteger' (10 * i + fromIntegral (ord c - ord '0'))
-        else return i
-
-lexChar :: Lexer Char
-lexChar = do
-  expectChar '\''
-  c <- stringChar
-  expectChar '\''
-  return c
-
-expectChar :: Char -> Lexer ()
-expectChar c = do
-  c' <- nextChar
-  p  <- currentPosition 
-  when (c /= c') (throwError $ ExpectedChar p c c')
-  consumeChar
-
-stringChar :: Lexer Char
-stringChar = do
-  c <- nextChar
-  p <- currentPosition
-  case c of
-    '\\'                            -> consumeChar >> escapeChar
-    _ | 32 <= ord c && ord c <= 126 -> consumeChar >> return c
-    _                               -> throwError $ BadStringCharacter p c
-
-escapeChar :: Lexer Char
-escapeChar = do
-  c <- nextChar
-  p <- currentPosition
-  case c of
-    '\\'                            -> consumeChar >> return '\\'
-    '\"'                            -> consumeChar >> return '\"'
-    'n'                             -> consumeChar >> return '\n'
-    't'                             -> consumeChar >> return '\t'
-    _                               -> throwError $ BadStringEscape p c
-
-lexString :: Lexer String
-lexString = do
-    expectChar '\"'
-    lexString'
-  where
-    lexString' = do
-      c <- nextChar
-      if c == '\"'
-        then consumeChar >> return ""
-        else do
-          c  <- stringChar
-          cs <- lexString'
-          return (c : cs)
+}

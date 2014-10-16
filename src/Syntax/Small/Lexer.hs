@@ -46,16 +46,16 @@ consumeChar =
 
 -- Lexing
 
-tokenize :: String -> Either LexError [Token]
-tokenize cs = runExcept $ flip evalStateT (LexState startPosition cs) $ tokenize'
+tokenise :: String -> Either LexError [Token]
+tokenise cs = runExcept $ flip evalStateT (LexState startPosition cs) $ tokenise'
   where
-    tokenize' = do
+    tokenise' = do
       c <- nextChar
       if c == '\0'
         then return []
         else do
           t  <- lexToken
-          ts <- tokenize'
+          ts <- tokenise'
           return (t : ts)
 
 symbolChar :: [Char]

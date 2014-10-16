@@ -63,20 +63,52 @@ data Token' = TkIdentifier [String] String
 type Token = Locate Token'
 
 isVariableIdentifier :: Token' -> Bool
-isVariableIdentifier (TkIdentifier _ (c:_)) | isLower c = True
+isVariableIdentifier (TkIdentifier [] (c:_)) | isLower c = True
 isVariableIdentifier _                                  = False
 
 isConstructorIdentifier :: Token' -> Bool
-isConstructorIdentifier (TkIdentifier _ (c:_)) | isUpper c = True
+isConstructorIdentifier (TkIdentifier [] (c:_)) | isUpper c = True
 isConstructorIdentifier _                                  = False
 
 isSymbolIdentifier :: Token' -> Bool
-isSymbolIdentifier (TkIdentifier _ (c:_)) | not (isAlpha c) && c /= ':' = True
+isSymbolIdentifier (TkIdentifier [] (c:_)) | not (isAlpha c) && c /= ':' = True
 isSymbolIdentifier _                                                    = False
 
 isSymbolConstructorIdentifier :: Token' -> Bool
-isSymbolConstructorIdentifier (TkIdentifier _ (':':_)) = True
+isSymbolConstructorIdentifier (TkIdentifier [] (':':_)) = True
 isSymbolConstructorIdentifier _                        = False
+
+isQVariableIdentifier :: Token' -> Bool
+isQVariableIdentifier (TkIdentifier [] (c:_)) | isLower c = False
+isQVariableIdentifier (TkIdentifier _ (c:_)) | isLower c = True
+isQVariableIdentifier _                                  = False
+
+isQConstructorIdentifier :: Token' -> Bool
+isQConstructorIdentifier (TkIdentifier [] (c:_)) | isUpper c = False
+isQConstructorIdentifier (TkIdentifier _ (c:_)) | isUpper c = True
+isQConstructorIdentifier _                                  = False
+
+isQSymbolIdentifier :: Token' -> Bool
+isQSymbolIdentifier (TkIdentifier [] (c:_)) | not (isAlpha c) && c /= ':' = False
+isQSymbolIdentifier (TkIdentifier _ (c:_)) | not (isAlpha c) && c /= ':' = True
+isQSymbolIdentifier _                                                    = False
+
+isQSymbolConstructorIdentifier :: Token' -> Bool
+isQSymbolConstructorIdentifier (TkIdentifier [] (':':_)) = False
+isQSymbolConstructorIdentifier (TkIdentifier _ (':':_)) = True
+isQSymbolConstructorIdentifier _                        = False
+
+identifierName :: Token' -> ([String], String)
+identifierName (TkIdentifier a b) = (a, b)
+
+integerValue :: Token' -> Integer
+integerValue (TkInteger i) = i
+
+charValue :: Token' -> Char
+charValue (TkChar c) = c
+
+stringValue :: Token' -> String
+stringValue (TkString s) = s
 
 isFixity :: Token' -> Bool
 isFixity TkInfix  = True

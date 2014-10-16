@@ -209,7 +209,11 @@ typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> 
     --  return $ C.Expression (C.expressionType nilTy) (C.EListCase eTy nilTy x xs rTy)
 
 typecheckDeclaration :: Declaration CoreName -> TypecheckMonad C.Declaration
-typecheckDeclaration (Declaration e)             = C.Declaration <$> typecheckExpression e
+typecheckDeclaration (Declaration Nothing e)     = C.Declaration <$> typecheckExpression e
+--typecheckDeclaration (Declaration (Just t) e)    = do
+--  e' <- typecheckExpression e
+--  liftUnify $ unifyType (C.expressionType e') 
+-- TODO : assert the type of e is more general than t
 typecheckDeclaration (PrimitiveDeclaration prim) = return $ C.PrimitiveDeclaration prim
 
 primitiveType :: PrimitiveDeclaration -> TypecheckMonad (MonoType CoreName)
@@ -277,18 +281,18 @@ typecheckDataConstructor :: ModuleName -> MonoType CoreName -> Set CoreName -> D
 typecheckDataConstructor md ty tvs (DataConstructor n ts) = do
   return $ Map.singleton (QName md ConstructorName n) $ PolyType tvs $ foldr (\a b -> makeTypeApplication TyArrow [a, b]) ty ts
 
-typecheckDataDeclaration :: ModuleName -> QCoreName -> DataDeclaration CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
-typecheckDataDeclaration md n (DataDeclaration tvs dcs) = do
+typecheckTypeDeclaration :: ModuleName -> QCoreName -> TypeDeclaration CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
+typecheckTypeDeclaration md n (DataDeclaration tvs dcs) = do
   let ty = makeTypeApplication (TyConstant n) (TyVariable <$> tvs)
   Map.unions <$> typecheckDataConstructor md ty (Set.fromList tvs) `mapM` dcs
-typecheckDataDeclaration md n (PrimitiveDataDeclaration prim) = return Map.empty
+typecheckTypeDeclaration md n (PrimitiveDataDeclaration prim) = return Map.empty
 
-typecheckDataDeclarations :: ModuleName -> DataDeclarationMap CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
-typecheckDataDeclarations md ds = do
-  fmap Map.unions $ forM (Map.toList ds) $ \(k, v) -> typecheckDataDeclaration md (QName md TypeConstructorName k) v
+typecheckTypeDeclarations :: ModuleName -> TypeDeclarationMap CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
+typecheckTypeDeclarations md ds = do
+  fmap Map.unions $ forM (Map.toList ds) $ \(k, v) -> typecheckTypeDeclaration md (QName md TypeConstructorName k) v
 
 typecheckModule :: Module CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName), C.Module)
 typecheckModule (Module md is ds bs) = do
-  ds' <- typecheckDataDeclarations md ds
+  ds' <- typecheckTypeDeclarations md ds
   bs' <- globalBindMany ds' $ typecheckBindings md bs
   return (Map.union ds' $ Map.map fst . Map.mapKeys (QName md VariableName) $ bs', C.Module md bs')

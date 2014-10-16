@@ -17,7 +17,7 @@ primitiveModule :: Module SyntaxName
 primitiveModule = Module
   { moduleName             = ["Primitive"]
   , moduleImport           = Set.empty
-  , moduleDataDeclarations = Map.fromList $
+  , moduleTypeDeclarations = Map.fromList $
       [ (UserName "Int#",  PrimitiveDataDeclaration UnboxedIntDataDeclaration)
       , (UserName "Char#", PrimitiveDataDeclaration UnboxedCharDataDeclaration)
       , (UserName "Bool",  DataDeclaration []             [DataConstructor (UserName "True") [], DataConstructor (UserName "False") []])

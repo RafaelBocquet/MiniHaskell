@@ -34,8 +34,8 @@ instance Show n => Show (MonoType n) where
   show TyArrow             = "(->)"
 
 data PolyType n = PolyType
-  { polyTypeVariables :: Set n
-  , polyTypeType      :: MonoType n
+  { polyTypeVariables   :: Set n
+  , polyTypeType        :: MonoType n
   }
 
 instance Show n => Show (PolyType n) where

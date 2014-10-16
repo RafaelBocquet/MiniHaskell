@@ -9,9 +9,12 @@ import Control.Applicative
 import Syntax.Location
 import Syntax.Name
 import Syntax.Module
-import Syntax.Small.Lexer
-import Syntax.Small.Token
-import Syntax.Small.Parser
+import qualified Syntax.Small.Lexer as Small
+import qualified Syntax.Small.Token as Small
+import qualified Syntax.Small.Parser as Small
+import qualified Syntax.Full.Lexer as Full (tokenise)
+import qualified Syntax.Full.Token as Full
+import qualified Syntax.Full.Parser as Full
 import Primitive
 import Base
 
@@ -39,10 +42,10 @@ parseOnly fn = do
   putStrLn $ fn ++ " : "
   putStr "\t"
   str <- readFile fn
-  case tokenize str of
+  case Small.tokenise str of
     Left e -> putStrLn.show $ e
     Right ts -> do
-      case runParser ts parseModule of
+      case Small.runParser ts Small.parseModule of
         Left e -> putStrLn.show $ e
         Right e -> putStrLn $ "GOOD"
 
@@ -51,19 +54,42 @@ typecheckOnly fn = do
   putStrLn $ fn ++ " : "
   putStr "\t"
   str <- readFile fn
-  case tokenize str of
+  case Small.tokenise str of
     Left e   -> putStrLn.show $ e
     Right ts -> do
-      case runParser ts parseModule of
+      case Small.runParser ts Small.parseModule of
         Left e   -> putStrLn.show $ e
         Right md -> do
-          let r = typecheck (makeModuleMap [primitiveModule, baseModule, md])
+          let r = typecheck (makeModuleMap [primitiveModule, md])
           putStrLn.show $ r
+
+parseOnlyFull :: String -> IO ()
+parseOnlyFull fn = do
+  putStrLn $ fn ++ " : "
+  putStr "\t"
+  str <- readFile fn
+  case Full.tokenise "module Pouet where { id x = x }" of
+    ts -> do
+      putStrLn.show $ ts
+      putStrLn.show $ Full.parseModule ts
+    --Left e -> putStrLn.show $ e
+  --  Right ts -> do
+  --    case runParser ts parseModule of
+  --      Left e -> putStrLn.show $ e
+  --      Right e -> putStrLn $ "GOOD"
+
+typecheckOnlyFull :: String -> IO ()
+typecheckOnlyFull fn = do
+  putStrLn $ fn ++ " : "
+  putStr "\t"
+  return ()
 
 main :: IO ()
 main = do
   (flags, filenames) <- partition isFlag <$> getArgs
-  case ("--parse-only" `elem` flags, "--typecheck-only" `elem` flags) of
-    (True, False) -> forM_ filenames parseOnly
-    (False, True) -> forM_ filenames typecheckOnly
-    _ -> putStrLn "Usage: cmd [--parse-only | --typecheck-only] FILENAMES..."
+  case ("--parse-only" `elem` flags, "--typecheck-only" `elem` flags, "--full" `elem` flags) of
+    (True, False, False) -> forM_ filenames parseOnly
+    (False, True, False) -> forM_ filenames typecheckOnly
+    (True, False, True) -> forM_ filenames parseOnlyFull
+    (False, True, True) -> forM_ filenames typecheckOnlyFull
+    _ -> putStrLn "Usage: cmd [--parse-only | --typecheck-only] [--full] FILENAMES..."

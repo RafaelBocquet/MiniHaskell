@@ -46,7 +46,7 @@ expressionFreeVariables = expressionFreeVariables' . delocate
         (Set.unions $ fmap (\(pat, pate) -> expressionFreeVariables pate `Set.difference` patternVariables pat) pats)
 
 declarationFreeVariables :: Ord n => Declaration n -> Set (QName n)
-declarationFreeVariables (Declaration e)          = expressionFreeVariables e
+declarationFreeVariables (Declaration _ e)        = expressionFreeVariables e
 declarationFreeVariables (PrimitiveDeclaration _) = Set.empty
 
 data Pattern n = PAs n (Pattern n)
@@ -64,6 +64,8 @@ patternVariables PWildcard             = Set.empty
 patternVariables (PConstructor _ pats) = Set.unions $ patternVariables <$> pats
 patternVariables (PLiteralInt _)       = Set.empty
 patternVariables (PLiteralChar _)      = Set.empty
+
+data Fixity = Infix | Infixl | Infixr
 
 type Binding n    = Locate (n, [n], Expression n)
 
@@ -87,18 +89,22 @@ data PrimitiveDeclaration = PrimitiveIntAdd
                           | PrimitiveCharGE
                           | PrimitiveCharEQ
                           | PrimitiveCharNE
-
                           deriving (Show, Eq, Ord)
-data Declaration n        = Declaration (Expression n)
+                          
+data Declaration n        = Declaration (Maybe (MonoType n)) (Expression n)
                           | PrimitiveDeclaration PrimitiveDeclaration
                           deriving (Show)
 type DeclarationMap n     = Map n (Declaration n)
 
+
 data DataConstructor n        = DataConstructor n [MonoType n]
+                              deriving (Show)
 data PrimitiveDataDeclaration = UnboxedIntDataDeclaration
                               | UnboxedCharDataDeclaration
                               | IODataDeclaration
                               deriving (Show, Eq, Ord)
-data DataDeclaration n        = DataDeclaration [n] [DataConstructor n]
+data TypeDeclaration n        = DataDeclaration [n] [DataConstructor n]
                               | PrimitiveDataDeclaration PrimitiveDataDeclaration
-type DataDeclarationMap n     = Map n (DataDeclaration n)
+                              | TypeDeclaration [n] (MonoType n)
+                              deriving (Show)
+type TypeDeclarationMap n     = Map n (TypeDeclaration n)
