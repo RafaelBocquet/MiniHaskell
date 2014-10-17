@@ -15,12 +15,16 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import Control.Monad.Except
+
 }
 
 %name parseModule module
-
 %tokentype { Token' }
+
+%monad { ParseMonad }
 %error { parseError }
+
 %token 
   tvarId            { t | isVariableIdentifier t }
   tconId            { t | isConstructorIdentifier t }
@@ -316,10 +320,61 @@ apattern : varId              { PAs $1 PWildcard }
 
 {
 
+data ParseError = ParseError
+
+type ParseMonad = ExceptT ParseError (State Int)
+
 lll = Locate noLocation
 
 makeLambda :: [Pattern SyntaxName] -> Expression SyntaxName -> Expression SyntaxName
 makeLambda pats e = foldr (\pat e -> lll $ ELambda (UserName "_") $ lll $ ECase (lll $ EVariable (QName [] VariableName (UserName "_"))) [(pat, e)]) e pats
+
+data VariableDeclaration = VariableDeclaration SyntaxName [Pattern SyntaxName] (Expression SyntaxName)
+                         | SignatureDeclaration SyntaxName (MonoType SyntaxName)
+                         | PatternDeclaration (Pattern SyntaxName) (Expression SyntaxName)
+
+type BindingMap = Map SyntaxName (Maybe (MonoType SyntaxName), [([Pattern SyntaxName], Expression SyntaxName)])
+
+addBinding :: VariableDeclaration -> BindingMap -> BindingMap
+addBinding (VariableDeclaration n p e) m = case Map.lookup n m of
+  Nothing               -> Map.insert n (Nothing, [(p, e)]) m
+  Just (t, [])          -> Map.insert n (t, [(p, e)]) m
+  Just (t, es@((p', e'):_))
+    | length p' == length p -> Map.insert n (t, (p, e):es) m
+    | otherwise -> error "Bad pattern length ..."
+addBinding (SignatureDeclaration n t) m = case Map.lookup n m of
+  Nothing           -> Map.insert n (Just t, []) m
+  Just (Just _, _)  -> error "Multiple signatures"
+  Just (Nothing, e) -> Map.insert n (Just t, e) m
+-- addBinding (PatternDeclaration p e) m = case 
+
+makeDeclarationMap :: BindingMap -> ParseMonad (DeclarationMap SyntaxName)
+makeDeclarationMap =
+  Map.map
+  (\(t, e@((_, ne):_) ->
+    let ne = length ne in
+    -- \x1 x2 ... xne -> case (x1, x2, ..., xne) of (pats) -> (exprs)
+    Declaration t $ lll $ ECase () ()
+  )
+
+data TopDeclaration = ImportDeclaration ModuleName
+                    | TopVariableDeclaration VariableDeclaration
+                    | TopTypeDeclaration SyntaxName (TypeDeclaration SyntaxName)
+
+makeModule :: ModuleName -> [TopDeclaration] -> Module SyntaxName
+makeModule n tds =
+  let (m, bm) = foldl
+      (flip addTopDeclaration)
+      (Module n Set.empty Map.empty Map.empty, Map.empty)
+      tds
+    in
+  m { moduleDeclarations = makeDeclarationMap bm }
+  where
+    addTopDeclaration (ImportDeclaration impName) (m, bm) = (m { moduleImport = Set.insert impName (moduleImport m) }, bm)
+    addTopDeclaration (TopVariableDeclaration v) (m, bm)  = (m, addBinding v bm)
+    addTopDeclaration (TopTypeDeclaration a b) (m, bm)    = (m { moduleTypeDeclarations = Map.insert a b (moduleTypeDeclarations m) }, bm)
+  
+
 
 parseError x = error "Parse error"
 
