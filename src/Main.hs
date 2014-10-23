@@ -16,7 +16,6 @@ import qualified Syntax.Full.Lexer as Full (tokenise)
 import qualified Syntax.Full.Token as Full
 import qualified Syntax.Full.Parser as Full
 import Primitive
-import Base
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -59,30 +58,40 @@ typecheckOnly fn = do
     Right ts -> do
       case Small.runParser ts Small.parseModule of
         Left e   -> putStrLn.show $ e
-        Right md -> do
-          let r = typecheck (makeModuleMap [primitiveModule, md])
-          putStrLn.show $ r
+        Right md -> 
+          flip evalState 0 $ do
+            r <- typecheck (makeModuleMap [primitiveModule, md])
+            return $ putStrLn.show $ r
 
 parseOnlyFull :: String -> IO ()
 parseOnlyFull fn = do
   putStrLn $ fn ++ " : "
   putStr "\t"
   str <- readFile fn
-  case Full.tokenise "module Pouet where { id x = x }" of
+  case Full.tokenise str of
     ts -> do
       putStrLn.show $ ts
-      putStrLn.show $ Full.parseModule ts
-    --Left e -> putStrLn.show $ e
-  --  Right ts -> do
-  --    case runParser ts parseModule of
-  --      Left e -> putStrLn.show $ e
-  --      Right e -> putStrLn $ "GOOD"
+      flip evalState 0 $ do
+        ps <- Full.runParse $ Full.parseModule ts
+        case ps of
+          Left e -> return (putStrLn.show $ e)
+          Right ps -> return (putStrLn.show $ ps)
 
 typecheckOnlyFull :: String -> IO ()
 typecheckOnlyFull fn = do
   putStrLn $ fn ++ " : "
   putStr "\t"
-  return ()
+  str <- readFile fn
+  case Full.tokenise str of
+    ts -> do
+      putStrLn.show $ ts
+      flip evalState 0 $ do
+        ps <- Full.runParse $ Full.parseModule ts
+        case ps of
+          Left e -> return (putStrLn.show $ e)
+          Right ps -> do
+            r <- typecheck (makeModuleMap [primitiveModule, ps])
+            return $ putStrLn.show $ r
 
 main :: IO ()
 main = do

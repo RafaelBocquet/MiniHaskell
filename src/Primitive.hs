@@ -13,38 +13,45 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+tupleVariables = fmap (\i -> UserName $ 't' : show i) [1..]
+
 primitiveModule :: Module SyntaxName
 primitiveModule = Module
   { moduleName             = ["Primitive"]
   , moduleImport           = Set.empty
   , moduleTypeDeclarations = Map.fromList $
-      [ (UserName "Int#",  PrimitiveDataDeclaration UnboxedIntDataDeclaration)
-      , (UserName "Char#", PrimitiveDataDeclaration UnboxedCharDataDeclaration)
-      , (UserName "Bool",  DataDeclaration []             [DataConstructor (UserName "True") [], DataConstructor (UserName "False") []])
-      , (UserName "()",    DataDeclaration []             [DataConstructor (UserName "()") []])
-      , (UserName "IO",    PrimitiveDataDeclaration IODataDeclaration)
-      ] -- ++ ((\n -> (UserName (replicate (n-1) ','), PrimitiveDataDeclaration (TupleDataDeclaration n))) <$> [2..62])
+      [ (UserName "Int_prim",  PrimitiveDataDeclaration UnboxedIntDataDeclaration)
+      , (UserName "Char_prim", PrimitiveDataDeclaration UnboxedCharDataDeclaration)
+      , (UserName "Bool",      DataDeclaration [] [DataConstructor (UserName "True") [], DataConstructor (UserName "False") []])
+      , (UserName "()",        DataDeclaration [] [DataConstructor (UserName "()") []])
+      , (UserName "",          DataDeclaration [] [DataConstructor (UserName "") []])
+      , (UserName "IO",        PrimitiveDataDeclaration IODataDeclaration)
+      ] ++ ((\n ->
+              ( UserName (replicate (n-1) ',')
+              , DataDeclaration (take n tupleVariables) [DataConstructor (UserName (replicate (n-1) ',')) $ TyVariable <$> take n tupleVariables]
+              )
+           ) <$> [2..4])
   , moduleDeclarations     = Map.fromList
-      [ (UserName "+#",      PrimitiveDeclaration PrimitiveIntAdd)
-      , (UserName "-#",      PrimitiveDeclaration PrimitiveIntSub)
-      , (UserName "*#",      PrimitiveDeclaration PrimitiveIntMul)
-      , (UserName "div#",    PrimitiveDeclaration PrimitiveIntDiv)
-      , (UserName "rem#",    PrimitiveDeclaration PrimitiveIntRem)
-      , (UserName "negate#", PrimitiveDeclaration PrimitiveIntNegate)
-      , (UserName "intLT#",  PrimitiveDeclaration PrimitiveIntLT)
-      , (UserName "intLE#",  PrimitiveDeclaration PrimitiveIntLE)
-      , (UserName "intGT#",  PrimitiveDeclaration PrimitiveIntGT)
-      , (UserName "intGE#",  PrimitiveDeclaration PrimitiveIntGE)
-      , (UserName "intEQ#",  PrimitiveDeclaration PrimitiveIntEQ)
-      , (UserName "intNE#",  PrimitiveDeclaration PrimitiveIntNE)
+      [ (UserName "add_prim",    PrimitiveDeclaration PrimitiveIntAdd)
+      , (UserName "sub_prim",    PrimitiveDeclaration PrimitiveIntSub)
+      , (UserName "mul_prim",    PrimitiveDeclaration PrimitiveIntMul)
+      , (UserName "div_prim",    PrimitiveDeclaration PrimitiveIntDiv)
+      , (UserName "rem_prim",    PrimitiveDeclaration PrimitiveIntRem)
+      , (UserName "negate_prim", PrimitiveDeclaration PrimitiveIntNegate)
+      , (UserName "intLT_prim",  PrimitiveDeclaration PrimitiveIntLT)
+      , (UserName "intLE_prim",  PrimitiveDeclaration PrimitiveIntLE)
+      , (UserName "intGT_prim",  PrimitiveDeclaration PrimitiveIntGT)
+      , (UserName "intGE_prim",  PrimitiveDeclaration PrimitiveIntGE)
+      , (UserName "intEQ_prim",  PrimitiveDeclaration PrimitiveIntEQ)
+      , (UserName "intNE_prim",  PrimitiveDeclaration PrimitiveIntNE)
 
-      , (UserName "ord#",     PrimitiveDeclaration PrimitiveOrd)
-      , (UserName "chr#",     PrimitiveDeclaration PrimitiveChr)
-      , (UserName "charLT#",  PrimitiveDeclaration PrimitiveCharLT)
-      , (UserName "charLE#",  PrimitiveDeclaration PrimitiveCharLE)
-      , (UserName "charGT#",  PrimitiveDeclaration PrimitiveCharGT)
-      , (UserName "charGE#",  PrimitiveDeclaration PrimitiveCharGE)
-      , (UserName "charEQ#",  PrimitiveDeclaration PrimitiveCharEQ)
-      , (UserName "charNE#",  PrimitiveDeclaration PrimitiveCharNE)
+      , (UserName "ord_prim",     PrimitiveDeclaration PrimitiveOrd)
+      , (UserName "chr_prim",     PrimitiveDeclaration PrimitiveChr)
+      , (UserName "charLT_prim",  PrimitiveDeclaration PrimitiveCharLT)
+      , (UserName "charLE_prim",  PrimitiveDeclaration PrimitiveCharLE)
+      , (UserName "charGT_prim",  PrimitiveDeclaration PrimitiveCharGT)
+      , (UserName "charGE_prim",  PrimitiveDeclaration PrimitiveCharGE)
+      , (UserName "charEQ_prim",  PrimitiveDeclaration PrimitiveCharEQ)
+      , (UserName "charNE_prim",  PrimitiveDeclaration PrimitiveCharNE)
       ]
   }

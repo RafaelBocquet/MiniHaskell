@@ -30,9 +30,9 @@ data PatternGroupType = DataPatternGroupType QCoreName
                       | NoPatternGroupType
                       deriving (Show)
 
-data PatternGroup = PData (Map CoreName ([CoreName], Expression)) (Maybe Expression)
-                  | PInt (Map Int Expression) (Maybe Expression)
-                  | PChar (Map Char Expression) (Maybe Expression)
+data PatternGroup = PData (Map QCoreName ([CoreName], Expression)) (Maybe Expression)
+                  | PInt (Map Int (Expression)) (Maybe Expression)
+                  | PChar (Map Char (Expression)) (Maybe Expression)
                   | PNone Expression
                   deriving (Show)
 

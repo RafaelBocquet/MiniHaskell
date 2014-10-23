@@ -24,9 +24,9 @@ import qualified Data.Set as Set
 
 import Debug.Trace
 
-typecheck :: Map ModuleName (Module SyntaxName) -> Map ModuleName C.Module
-typecheck moduleMap =
-    let mods = reverse $ topologicalSort (Map.keysSet moduleMap) [] in flip evalState 0 $ do
+typecheck :: Map ModuleName (Module SyntaxName) -> State Int (Map ModuleName C.Module)
+typecheck moduleMap = do
+    let mods = reverse $ topologicalSort (Map.keysSet moduleMap) []
     renaming <- runRenameMonad Map.empty $
       foldlM
         (\(renameMap, modMap) mod -> do

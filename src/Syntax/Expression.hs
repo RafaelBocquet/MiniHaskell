@@ -23,6 +23,8 @@ data Expression' n = EInteger Integer
                    deriving (Show)
 type Expression n = Locate (Expression' n)
 
+makeApplication = foldl (\a b -> Locate noLocation $ EApplication a b)
+
 expressionFreeVariables :: Ord n => Expression n -> Set (QName n)
 expressionFreeVariables = expressionFreeVariables' . delocate
   where
@@ -49,21 +51,25 @@ declarationFreeVariables :: Ord n => Declaration n -> Set (QName n)
 declarationFreeVariables (Declaration _ e)        = expressionFreeVariables e
 declarationFreeVariables (PrimitiveDeclaration _) = Set.empty
 
-data Pattern n = PAs n (Pattern n)
-               | PWildcard
-               | PConstructor (QName n) [Pattern n]
-               | PLiteralInt Int
-               | PLiteralChar Char
-               deriving (Show)
+data Pattern n = Pattern (Pattern' n) [n]
+               deriving (Show, Eq, Ord)
+
+data Pattern' n = PWildcard
+                | PConstructor (QName n) [Pattern n]
+                | PLiteralInt Int
+                | PLiteralChar Char
+                deriving (Show, Eq, Ord)
 
 -- PVariable v ~ PAs v PWildcard
 
 patternVariables :: Ord n => Pattern n -> Set (QName n)
-patternVariables (PAs v pat)           = Set.insert (QName [] VariableName v) (patternVariables pat)
-patternVariables PWildcard             = Set.empty
-patternVariables (PConstructor _ pats) = Set.unions $ patternVariables <$> pats
-patternVariables (PLiteralInt _)       = Set.empty
-patternVariables (PLiteralChar _)      = Set.empty
+patternVariables (Pattern pat vs)      = Set.union (Set.fromList $ (QName [] VariableName) <$> vs) (patternVariables' pat)
+
+patternVariables'  :: Ord n => Pattern' n -> Set (QName n)
+patternVariables' PWildcard             = Set.empty
+patternVariables' (PConstructor _ pats) = Set.unions $ patternVariables <$> pats
+patternVariables' (PLiteralInt _)       = Set.empty
+patternVariables' (PLiteralChar _)      = Set.empty
 
 data Fixity = Infix | Infixl | Infixr
 

@@ -8,6 +8,9 @@ import Syntax.Name
 import Syntax.Module
 import Syntax.Location
 
+import Control.Applicative
+import Control.Monad
+
 import Data.Maybe
 
 import Data.Set (Set)
@@ -16,7 +19,9 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 import Control.Monad.Except
+import Control.Monad.State
 
+import Debug.Trace
 }
 
 %name parseModule module
@@ -91,6 +96,10 @@ import Control.Monad.Except
 %nonassoc 'if' 'then' 'else' '\\' '->'
 %nonassoc tvarId tconId tsymId tsymconId tqvarId tqconId tqsymId tqsymconId '`'
 
+%nonassoc LOW
+%nonassoc MID
+%nonassoc HIGH
+
 %%
 
 --
@@ -102,9 +111,11 @@ list(X) : list(X) X { $2 : $1 }
         |           { [] }
 
 list_(X) : X list_(X) { $1 : $2 }
-        |             { [] }
+         |            { [] }
 
 nonempty_list(X) : list(X) X { $2 : $1 }
+
+nonempty_list_(X) : X list_(X) { $1 : $2 }
 
 separated_list(X, Y) : separated_list(X, Y) Y X { $3 : $1 }
                      | X                        { [$1] }
@@ -144,18 +155,18 @@ qtysymconId : tsymconId { QName (fst $ identifierName $1) TypeConstructorName (U
 
 -- 
 
-module : moduleHeader moduleBody { makeModule $1 $2 }
+module : moduleHeader moduleBody {% makeModule $1 $2 }
 
 moduleHeader : 'module' moduleName 'where' { $2 }
              |                             { ["Main"] }
 
 moduleBody :: { [TopDeclaration] }
-           : '{' separated_nonempty_list(importDeclaration, nonempty_list(';')) '}'
-                  { $2 }
-           | '{' separated_nonempty_list(importDeclaration, nonempty_list(';')) separated_nonempty_list(topDeclaration, nonempty_list(';')) '}'
-                  { $2 ++ concat $3 }
-           | '{' separated_nonempty_list(topDeclaration, nonempty_list(';')) '}'
-                  { concat $2 }
+           --: '{' list(';') separated_nonempty_list(importDeclaration, nonempty_list(';')) list(';') '}'
+           --       { $3 }
+           : '{' list(';') separated_nonempty_list(importDeclaration, nonempty_list(';')) nonempty_list(';') separated_nonempty_list(topDeclaration, nonempty_list(';')) list(';') '}'
+                  { $3 ++ concat $5 }
+           | '{' list(';') separated_nonempty_list(topDeclaration, nonempty_list(';')) list(';') '}'
+                  { concat $3 }
 
 moduleName :: { ModuleName }
            : qconId { let QName a _ (UserName b) = $1 in a ++ [b] }
@@ -189,7 +200,7 @@ fixity :: { Fixity }
        | 'infix'  { Infix }
 
 leftHandSide :: { (SyntaxName, [Pattern SyntaxName]) }
-             : varId nonempty_list(pattern) { ($1, $2) }
+             : varId nonempty_list(apattern) { ($1, $2) }
 
 rightHandSide :: { Expression SyntaxName } 
               : '=' expression                { $2 }
@@ -221,14 +232,14 @@ atype :: { MonoType SyntaxName }
           { case length $1 of
               1 -> head $1
               _ -> makeTypeApplication
-                    (TyConstant (QName ["Base"] TypeConstructorName (UserName (replicate (length $1 - 1) ','))))
+                    (TyConstant (QName ["Primitive"] TypeConstructorName (UserName (replicate (length $1 - 1) ','))))
                     $1
           }
       | delimited('[', type, ']')                               { TyApplication (TyConstant (QName ["Base"] TypeConstructorName (UserName "[]"))) $1 }
 
 gtycon :: { MonoType SyntaxName }
-       : '(' ')'                    { TyConstant (QName ["Base"] TypeConstructorName (UserName "()")) }
-       | '(' nonempty_list(',') ')' { TyConstant (QName ["Base"] TypeConstructorName (UserName (replicate (length $2) ','))) }
+       : '(' ')'                    { TyConstant (QName ["Primitive"] TypeConstructorName (UserName "()")) }
+       | '(' nonempty_list(',') ')' { TyConstant (QName ["Primitive"] TypeConstructorName (UserName (replicate (length $2) ','))) }
        | '[' ']'                    { TyConstant (QName ["Base"] TypeConstructorName (UserName "[]")) }
        | '(' '->' ')'               { TyArrow }
        | qtyconId                   { TyConstant $1 }
@@ -273,7 +284,7 @@ expression :: { Expression SyntaxName }
 
 expression10 :: { Expression SyntaxName }
           -- : 'if' expression 'then' expression 'else' expression { 0 }
-             : '\\' nonempty_list(pattern) '->' expression
+             : '\\'  nonempty_list(apattern) '->' expression
                 { makeLambda $2 $4 }
           -- | 'let'
              | 'case' expression 'of' '{' separated_nonempty_list(option(casealternative), ';') '}'
@@ -283,6 +294,7 @@ expression10 :: { Expression SyntaxName }
 
 aexpression :: { Expression SyntaxName }
             : qvarId                                                        { lll $ EVariable $1 }
+            | qconId                                                        { lll $ EVariable $1 }
             | integer                                                       { lll $ EInteger (integerValue $1) }
             | char                                                          { lll $ EChar (charValue $1) }
             | string
@@ -293,9 +305,9 @@ aexpression :: { Expression SyntaxName }
                 }
             | delimited('(', separated_list(expression, ','), ')')
                 { case length $1 of
-                    0 -> lll $ EVariable (QName ["Base"] ConstructorName (UserName "()"))
+                    0 -> lll $ EVariable (QName ["Primitive"] ConstructorName (UserName "()"))
                     1 -> head $1
-                    _ -> foldl (\a b -> lll $ EApplication a b) (lll $ EVariable (QName ["Base"] ConstructorName (UserName $ replicate (length $1 - 1) ','))) $1
+                    _ -> foldl (\a b -> lll $ EApplication a b) (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName $ replicate (length $1 - 1) ','))) $1
                 }
             | delimited('[', separated_nonempty_list(expression, ','), ']')
                 { foldl
@@ -310,19 +322,37 @@ casealternative : pattern '->' expression { ($1, $3) }
 -- Patterns
 
 pattern : pattern10 { $1 }
-        | pattern qsymconId pattern10 { PConstructor $2 [$1, $3] }
+        | pattern qsymconId pattern10 { Pattern (PConstructor $2 [$1, $3]) [] }
 
 pattern10 : apattern { $1 }
+          | qconId nonempty_list_(apattern)
+              { Pattern (PConstructor $1 $2) [] }
 
-apattern : varId              { PAs $1 PWildcard }
-         | varId '@' apattern { PAs $1 $3 }
-         | '_'                { PWildcard }
+apattern : varId                        { Pattern PWildcard [$1] }
+         | varId '@' apattern           { let Pattern pat as = $3 in Pattern pat ($1 : as) }
+         | '_'                          { Pattern PWildcard [] }
+         | qconId                       { Pattern (PConstructor $1 []) [] }
+         | delimited('(', separated_nonempty_list(pattern, ','), ')')
+              { case $1 of
+                  [pat] -> pat
+                  _     -> Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName $ replicate (length $1 - 1) ',')) $1) []
+              }
 
 {
 
 data ParseError = ParseError
+                deriving (Show)
 
 type ParseMonad = ExceptT ParseError (State Int)
+
+runParse :: ParseMonad a -> State Int (Either ParseError a)
+runParse = runExceptT
+
+generateName :: ParseMonad SyntaxName
+generateName = do
+  n <- get
+  modify (+ 1)
+  return $ GeneratedName n
 
 lll = Locate noLocation
 
@@ -349,33 +379,47 @@ addBinding (SignatureDeclaration n t) m = case Map.lookup n m of
 -- addBinding (PatternDeclaration p e) m = case 
 
 makeDeclarationMap :: BindingMap -> ParseMonad (DeclarationMap SyntaxName)
-makeDeclarationMap =
-  Map.map
-  (\(t, e@((_, ne):_) ->
-    let ne = length ne in
-    -- \x1 x2 ... xne -> case (x1, x2, ..., xne) of (pats) -> (exprs)
-    Declaration t $ lll $ ECase () ()
-  )
+makeDeclarationMap mp =
+    Map.fromList <$> (\(a, b) -> do
+      b' <- makeDeclaration b
+      return (a, b')
+    ) `mapM` Map.toList mp
+  where
+    makeDeclaration (t, e@((pats, _):_)) = do
+      let ne = length pats
+      ns <- forM [1..ne] $ const generateName
+      let decl = foldr
+            (((.).(.)) lll ELambda)
+            (if ne == 1
+              then
+                lll $ ECase
+                (lll . EVariable . QName [] VariableName $ head ns)
+                (fmap (\(pat, e) -> (head pat, e)) e)
+              else
+                lll $ ECase
+                (makeApplication (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName $ replicate (ne - 1) ','))) (lll . EVariable . QName [] VariableName <$> ns))
+                (fmap (\(pat, e) -> (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName $ replicate (ne - 1) ',')) pat) [], e)) e)
+            )
+            ns
+      return $ Declaration t decl
 
 data TopDeclaration = ImportDeclaration ModuleName
                     | TopVariableDeclaration VariableDeclaration
                     | TopTypeDeclaration SyntaxName (TypeDeclaration SyntaxName)
 
-makeModule :: ModuleName -> [TopDeclaration] -> Module SyntaxName
-makeModule n tds =
-  let (m, bm) = foldl
-      (flip addTopDeclaration)
-      (Module n Set.empty Map.empty Map.empty, Map.empty)
-      tds
-    in
-  m { moduleDeclarations = makeDeclarationMap bm }
+makeModule :: ModuleName -> [TopDeclaration] -> ParseMonad (Module SyntaxName)
+makeModule n tds = do
+  let (m, bs) = foldl
+        (flip addTopDeclaration)
+        (Module n Set.empty Map.empty Map.empty, Map.empty)
+        tds
+  ds <- makeDeclarationMap bs
+  return $ m { moduleDeclarations = ds }
   where
-    addTopDeclaration (ImportDeclaration impName) (m, bm) = (m { moduleImport = Set.insert impName (moduleImport m) }, bm)
-    addTopDeclaration (TopVariableDeclaration v) (m, bm)  = (m, addBinding v bm)
-    addTopDeclaration (TopTypeDeclaration a b) (m, bm)    = (m { moduleTypeDeclarations = Map.insert a b (moduleTypeDeclarations m) }, bm)
-  
+    addTopDeclaration (ImportDeclaration impName) (m, bs) = (m { moduleImport = Set.insert impName (moduleImport m) }, bs)
+    addTopDeclaration (TopVariableDeclaration v) (m, bs)  = (m, addBinding v bs)
+    addTopDeclaration (TopTypeDeclaration a b) (m, bs)    = (m { moduleTypeDeclarations = Map.insert a b (moduleTypeDeclarations m) }, bs)
 
-
-parseError x = error "Parse error"
+parseError x = error $ "Parse error : " ++ show x
 
 }

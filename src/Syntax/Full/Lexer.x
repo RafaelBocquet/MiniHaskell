@@ -35,7 +35,7 @@ $identifierChar = [a-zA-Z0-9_\']
 ".."       { const (const TkDoubleDot) }
 "::"       { const (const TkDoubleColon) }
 "="        { const (const TkEqual) }
-"\\"       { const (const TkLambda) }
+\\         { const (const TkLambda) }
 "|"        { const (const TkPipe) }
 "<-"       { const (const TkLArrow) }
 "->"       { const (const TkRArrow) }

@@ -364,8 +364,8 @@ parseIf = do
   p2 <- getPosition
   return $ Locate (makeLocation p1 p2) $
     ECase c
-      [ (PConstructor (QName ["Primitive"] ConstructorName (UserName "True")) [], a)
-      , (PConstructor (QName ["Primitive"] ConstructorName (UserName "True")) [], b)
+      [ (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "True")) []) [], a)
+      , (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "True")) []) [], b)
       ]
 
 parseLet :: Parser (Expression SyntaxName)
@@ -409,8 +409,8 @@ parseCase = do
   when (x == xs) (throwError $ DuplicateCasePattern x)
   return $ Locate (makeLocation p1 p2) $
     ECase e
-      [ (PConstructor (QName ["Base"] ConstructorName (UserName "[]")) [], c1)
-      , (PConstructor (QName ["Base"] ConstructorName (UserName ":")) [PAs x PWildcard, PAs xs PWildcard], c2)
+      [ (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName "[]")) []) [], c1)
+      , (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName ":")) [Pattern PWildcard [x], Pattern PWildcard [xs]]) [], c2)
       ]
 
 parseDo :: Parser (Expression SyntaxName)
