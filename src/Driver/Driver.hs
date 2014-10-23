@@ -27,11 +27,11 @@ import Debug.Trace
 typecheck :: Map ModuleName (Module SyntaxName) -> State Int (Map ModuleName C.Module)
 typecheck moduleMap = do
     let mods = reverse $ topologicalSort (Map.keysSet moduleMap) []
-    renaming <- runRenameMonad Map.empty $
+    renaming <- traceShow mods $ runRenameMonad Map.empty $
       foldlM
         (\(renameMap, modMap) mod -> do
           let localRenameMap = Map.mapKeysWith mappend (\(QName _ ns n) -> QName [] ns n) renameMap
-          (renameMap', mod') <- local (const $ Map.unionWith mappend renameMap localRenameMap) $ renameModule (fromJust $ Map.lookup mod moduleMap)
+          (renameMap', mod') <- traceShow mod $ local (const $ Map.unionWith mappend renameMap localRenameMap) $ renameModule (fromJust $ Map.lookup mod moduleMap)
           return (Map.union renameMap' renameMap, Map.insert mod mod' modMap)
         )
         (Map.empty, Map.empty)
@@ -73,4 +73,4 @@ typecheck moduleMap = do
             in
           if Set.member elem elemDep
             then error "Module cycle"
-            else topologicalSort (Set.delete elem $ st `Set.difference` elemDep) (elem : topologicalSort elemDep acc)
+            else topologicalSort (Set.delete elem $ st `Set.difference` elemDep) (elem : topologicalSort (st `Set.intersection` elemDep) acc)

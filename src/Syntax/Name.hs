@@ -17,8 +17,8 @@ instance Eq CoreName where
 instance Ord CoreName where
   CoreName i _ `compare` CoreName j _ = i `compare` j
 instance Show CoreName where
-  show (CoreName i s@(c:_)) | isAlpha c || c == '(' = s -- ++ "#" ++ show i
-                            | otherwise             = "(" ++ s ++ ")" -- ++ "#" ++ show i
+  show (CoreName i s@(c:_)) | isAlpha c || c == '(' = s ++ "#" ++ show i
+                            | otherwise             = "(" ++ s ++ ")" ++ "#" ++ show i
   show (CoreName i "")                              = "#" ++ show i
 
 data NameSpace = VariableName

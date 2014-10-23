@@ -48,57 +48,65 @@ parseOnly fn = do
         Left e -> putStrLn.show $ e
         Right e -> putStrLn $ "GOOD"
 
-typecheckOnly :: String -> IO ()
+typecheckOnly :: [String] -> IO ()
 typecheckOnly fn = do
-  putStrLn $ fn ++ " : "
+  putStrLn $ show fn ++ " : "
   putStr "\t"
-  str <- readFile fn
-  case Small.tokenise str of
-    Left e   -> putStrLn.show $ e
-    Right ts -> do
-      case Small.runParser ts Small.parseModule of
-        Left e   -> putStrLn.show $ e
-        Right md -> 
-          flip evalState 0 $ do
-            r <- typecheck (makeModuleMap [primitiveModule, md])
-            return $ putStrLn.show $ r
+  str1:strs <- readFile `mapM` fn
+  flip evalState 0 $ do
+    case Small.tokenise str1 of
+      Left e -> return (putStrLn . show $ e)
+      Right t1 -> case Small.runParser t1 Small.parseModule of
+        Left e -> return (putStrLn . show $ e)
+        Right p1 -> do
+          ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs
+          case foldr (flip f) (Right []) ps of
+            Left e -> return (putStrLn.show $ e)
+            Right ps -> do
+              r <- typecheck (makeModuleMap $ primitiveModule : p1 : ps)
+              return $ putStrLn.show $ r
+              return $ putStrLn.show $ r
+  where
+    f (Left e) _ = Left e
+    f (Right rs) (Left e) = Left e
+    f (Right rs) (Right r) = Right $ r : rs
 
-parseOnlyFull :: String -> IO ()
-parseOnlyFull fn = do
-  putStrLn $ fn ++ " : "
-  putStr "\t"
-  str <- readFile fn
-  case Full.tokenise str of
-    ts -> do
-      putStrLn.show $ ts
-      flip evalState 0 $ do
-        ps <- Full.runParse $ Full.parseModule ts
-        case ps of
-          Left e -> return (putStrLn.show $ e)
-          Right ps -> return (putStrLn.show $ ps)
+--parseOnlyFull :: String -> IO ()
+--parseOnlyFull fn = do
+--  putStrLn $ fn ++ " : "
+--  putStr "\t"
+--  str <- readFile fn
+--  case Full.tokenise str of
+--    ts -> do
+--      putStrLn.show $ ts
+--      flip evalState 0 $ do
+--        ps <- Full.runParse $ Full.parseModule ts
+--        case ps of
+--          Left e -> return (putStrLn.show $ e)
+--          Right ps -> return (putStrLn.show $ ps)
 
-typecheckOnlyFull :: String -> IO ()
+typecheckOnlyFull :: [String] -> IO ()
 typecheckOnlyFull fn = do
-  putStrLn $ fn ++ " : "
+  putStrLn $ show fn ++ " : "
   putStr "\t"
-  str <- readFile fn
-  case Full.tokenise str of
-    ts -> do
-      putStrLn.show $ ts
-      flip evalState 0 $ do
-        ps <- Full.runParse $ Full.parseModule ts
-        case ps of
-          Left e -> return (putStrLn.show $ e)
-          Right ps -> do
-            r <- typecheck (makeModuleMap [primitiveModule, ps])
-            return $ putStrLn.show $ r
-
+  strs <- readFile `mapM` fn
+  flip evalState 0 $ do
+    ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs
+    case foldr (flip f) (Right []) ps of
+      Left e -> return (putStrLn.show $ e)
+      Right ps -> do
+        r <- typecheck (makeModuleMap $ primitiveModule : ps)
+        return $ putStrLn.show $ r
+  where
+    f (Left e) _ = Left e
+    f (Right rs) (Left e) = Left e
+    f (Right rs) (Right r) = Right $ r : rs
 main :: IO ()
 main = do
   (flags, filenames) <- partition isFlag <$> getArgs
   case ("--parse-only" `elem` flags, "--typecheck-only" `elem` flags, "--full" `elem` flags) of
-    (True, False, False) -> forM_ filenames parseOnly
-    (False, True, False) -> forM_ filenames typecheckOnly
-    (True, False, True) -> forM_ filenames parseOnlyFull
-    (False, True, True) -> forM_ filenames typecheckOnlyFull
-    _ -> putStrLn "Usage: cmd [--parse-only | --typecheck-only] [--full] FILENAMES..."
+    (True, False, False) -> parseOnly (head filenames)
+    (False, True, False) -> typecheckOnly filenames
+    -- (True, False, True) -> forM_ filenames parseOnlyFull
+    (False, True, _) -> typecheckOnlyFull filenames
+    _ -> putStrLn "Usage: cmd [--parse-only | --typecheck-only] [--full] FILENAMES...\nUnless the flag --full is used, the first file in filenames is considered to be a small haskell file."

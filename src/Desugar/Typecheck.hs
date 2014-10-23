@@ -41,7 +41,15 @@ data TypecheckError = UnboundVariable QCoreName
                     | CantMatchPatternTypes QCoreName QCoreName
                     | UnknownPrimitive String
                     | UnknownError
-                    deriving (Show)
+
+instance Show TypecheckError where
+  show (InTypechecking e err)      = "When typechecking\n\t" ++ show e ++ "\n : \n" ++ show err
+  show (TCUnifyError err)          = show err
+  show (UnboundVariable v)         = "Unbound variable " ++ show v
+  show (UnboundConstructor v)      = "Unbound data constructor " ++ show v
+  show (CantMatchPatternTypes a b) = "Cant match pattern types " ++ show a ++ " and " ++ show b
+  show (UnknownPrimitive p)        = "Unknown primitive : " ++ show p
+  show (UnknownError)              = "Unknown / Not yet implemented error"
 
 type TypecheckMonad = ReaderT Environment (ExceptT TypecheckError (StateT Int UnifyMonad))
 
@@ -81,6 +89,13 @@ globalBindMany bs = local $ \s -> s { environmentTypeMap = Map.union bs (environ
 getPrimitive :: NameSpace -> String -> TypecheckMonad QCoreName
 getPrimitive ns s = do
   p <- Map.lookup (QName ["Primitive"] ns (UserName s)) . environmentRenaming <$> ask
+  case p of
+    Just (RenameGlobal [p]) -> return p
+    _                       -> throwError $ UnknownPrimitive s
+
+getBase :: NameSpace -> String -> TypecheckMonad QCoreName
+getBase ns s = do
+  p <- Map.lookup (QName ["Base"] ns (UserName s)) . environmentRenaming <$> ask
   case p of
     Just (RenameGlobal [p]) -> return p
     _                       -> throwError $ UnknownPrimitive s
@@ -152,7 +167,7 @@ typecheckPatterns epat pats = do
     constructorDataType (TyApplication a b)                         = constructorDataType a
     constructorDataType _                                           = throwError UnknownError
 
-    constructorResultType (TyApplication a b)                         = constructorResultType a
+    constructorResultType (TyApplication (TyApplication TyArrow a) b) = constructorResultType b
     constructorResultType a                                           = return a
 
     constructorArguments (TyApplication (TyApplication TyArrow a) b)  = (a :) <$> constructorArguments b
@@ -226,10 +241,10 @@ typecheckExpression :: Expression CoreName -> TypecheckMonad C.Expression
 typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> throwError $ InTypechecking e err)
   where
     typecheckExpression' (EInteger i)                                 = do
-      tyInt <- TyConstant <$> getPrimitive TypeConstructorName "Int"
+      tyInt <- TyConstant <$> getBase TypeConstructorName "Int"
       return $ C.Expression tyInt (C.EInteger i)
     typecheckExpression' (EChar c)                                    = do
-      tyChar <- TyConstant <$> getPrimitive TypeConstructorName "Char"
+      tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
       return $ C.Expression tyChar (C.EChar c)
     typecheckExpression' (EVariable x) = do
       emap <- environmentTypeMap <$> ask
@@ -297,13 +312,37 @@ primitiveType p
   | p `elem` [ PrimitiveChr ]
       = do
     tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
-    tyChar   <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
+    tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
     return $ makeTypeApplication TyArrow [tyInt, tyChar]
   | p `elem` [ PrimitiveCharLT, PrimitiveCharLE, PrimitiveCharGT, PrimitiveCharGE, PrimitiveCharEQ, PrimitiveCharNE ]
       = do
-    tyChar   <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
+    tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
     tyBool  <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
     return $ makeTypeApplication TyArrow [tyChar, makeTypeApplication TyArrow [tyChar, tyBool]]
+  | p `elem` [ PrimitiveBind ]
+      = do
+    tyIO <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
+    a <- TyVariable <$> generateName
+    b <- TyVariable <$> generateName
+    let tyArrow = makeTypeApplication TyArrow
+    return $ tyArrow [tyIO [a], tyArrow [tyArrow [a, tyIO [b]], tyIO [b]]]
+  | p `elem` [ PrimitiveReturn ]
+      = do
+    tyIO  <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
+    a <- TyVariable <$> generateName
+    return $ makeTypeApplication TyArrow [a, tyIO [a]]
+  | p `elem` [ PrimitivePutChar ]
+      = do
+    tyIO  <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
+    tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
+    tyUnit <- TyConstant <$> getPrimitive TypeConstructorName "()"
+    return $ makeTypeApplication TyArrow [tyChar, tyIO [tyUnit]]
+  | p `elem` [ PrimitiveError ]
+      = do
+    tyList <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "List"
+    tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
+    a <- TyVariable <$> generateName
+    return $ makeTypeApplication TyArrow [tyList [tyChar], a]
 
 typecheckBindings :: ModuleName -> DeclarationMap CoreName -> TypecheckMonad C.DeclarationMap
 typecheckBindings md bs = do

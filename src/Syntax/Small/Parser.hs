@@ -409,8 +409,8 @@ parseCase = do
   when (x == xs) (throwError $ DuplicateCasePattern x)
   return $ Locate (makeLocation p1 p2) $
     ECase e
-      [ (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName "[]")) []) [], c1)
-      , (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName ":")) [Pattern PWildcard [x], Pattern PWildcard [xs]]) [], c2)
+      [ (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "[]")) []) [], c1)
+      , (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName ":")) [Pattern PWildcard [x], Pattern PWildcard [xs]]) [], c2)
       ]
 
 parseDo :: Parser (Expression SyntaxName)

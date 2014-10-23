@@ -21,12 +21,20 @@ data UnifyMap  = UnifyMap
   }
 
 data UnifyError = UnifyError (MonoType CoreName) (MonoType CoreName)
-                | InfiniteType (MonoType CoreName) (MonoType CoreName)
+                | InfiniteType CoreName (MonoType CoreName)
                 | InUnification (MonoType CoreName) (MonoType CoreName) UnifyError
                 | UnifyKindError (Kind CoreName) (Kind CoreName)
-                | InfiniteKind (Kind CoreName) (Kind CoreName)
+                | InfiniteKind CoreName (Kind CoreName)
                 | InKindUnification (Kind CoreName) (Kind CoreName) UnifyError
-                deriving (Show)
+
+instance Show UnifyError where
+  show (InUnification t1 t2 err)     = "Can't unify type\n\t" ++ show t1 ++ "\n with\n" ++ show t2 ++ "\n : \n\t" ++ show err
+  show (InKindUnification k1 k2 err) = "Can't unify kind\n\t" ++ show k1 ++ "\n with\n" ++ show k2 ++ "\n : \n\t" ++ show err
+  show (UnifyError t1 t2)            = "Can't unify type\n\t" ++ show t1 ++ "\n with\n" ++ show t2
+  show (InfiniteType v t)            = "Type " ++ show t ++ " is infinite, because of type variable " ++ show v
+  show (UnifyKindError k1 k2)        = "Can't unify kind\n\t" ++ show k1 ++ "\n with\n" ++ show k2
+  show (InfiniteKind v k)            = "Kind " ++ show k ++ " is infinite, because of kind variable " ++ show v
+
 
 type UnifyMonad = StateT UnifyMap (Except UnifyError)
 
@@ -49,7 +57,7 @@ unifyKind k1 k2 = unifyKind' k1 k2 `catchError` (\e -> throwError $ InKindUnific
         (Just x1, Nothing) -> unifyKind x1 (KVariable v2)
         (Nothing, Just x2) -> unifyKind (KVariable v1) x2
         (Just x1, Just x2) -> unifyKind x1 x2
-    unifyKind' (KVariable v1) k1 | Set.member v1 (freeKindVariables k1) = throwError $ InfiniteKind (KVariable v1) k1
+    unifyKind' (KVariable v1) k1 | Set.member v1 (freeKindVariables k1) = throwError $ InfiniteKind v1 k1
                                  | otherwise                            = do
       x1 <- Map.lookup v1 . unifyKindMap <$> get
       case x1 of
@@ -75,7 +83,7 @@ unifyType t1 t2 = unifyType' t1 t2 `catchError` (\e -> throwError $ InUnificatio
         (Just x1, Nothing) -> unifyType x1 (TyVariable v2)
         (Nothing, Just x2) -> unifyType (TyVariable v1) x2
         (Just x1, Just x2) -> unifyType x1 x2
-    unifyType' (TyVariable v1) t1 | Set.member v1 (freeTypeVariables t1) = throwError $ InfiniteType (TyVariable v1) t1
+    unifyType' (TyVariable v1) t1 | Set.member v1 (freeTypeVariables t1) = throwError $ InfiniteType v1 t1
                                   | otherwise                            = do
       x1 <- Map.lookup v1 . unifyTypeMap <$> get
       case x1 of

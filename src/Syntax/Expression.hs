@@ -95,6 +95,10 @@ data PrimitiveDeclaration = PrimitiveIntAdd
                           | PrimitiveCharGE
                           | PrimitiveCharEQ
                           | PrimitiveCharNE
+                          | PrimitiveBind
+                          | PrimitiveReturn
+                          | PrimitivePutChar
+                          | PrimitiveError
                           deriving (Show, Eq, Ord)
                           
 data Declaration n        = Declaration (Maybe (MonoType n)) (Expression n)

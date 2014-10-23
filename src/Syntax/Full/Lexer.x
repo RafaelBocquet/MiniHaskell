@@ -31,6 +31,8 @@ $identifierChar = [a-zA-Z0-9_\']
 
 ($white | $newline)+;
 
+\-\-(. # $symbolChar)(. # $newline)*$newline;
+
 -- Reserved symbols
 ".."       { const (const TkDoubleDot) }
 "::"       { const (const TkDoubleColon) }

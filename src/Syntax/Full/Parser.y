@@ -107,22 +107,28 @@ import Debug.Trace
 option(X) : X { Just $1 }
           |   { Nothing }
 
-list(X) : list(X) X { $2 : $1 }
-        |           { [] }
+list_L(X) : list_L(X) X { $2 : $1 }
+          |           { [] }
+list(X) : list_L(X) { reverse $1 }
 
 list_(X) : X list_(X) { $1 : $2 }
          |            { [] }
 
-nonempty_list(X) : list(X) X { $2 : $1 }
+nonempty_list_L(X) : list_L(X) X { $2 : $1 }
+nonempty_list(X) : nonempty_list_L(X) { reverse $1 }
 
 nonempty_list_(X) : X list_(X) { $1 : $2 }
 
-separated_list(X, Y) : separated_list(X, Y) Y X { $3 : $1 }
-                     | X                        { [$1] }
-                     |                          { [] }
+separated_list_L(X, Y) : separated_list_L(X, Y) Y X { $3 : $1 }
+                       | X                          { [$1] }
+                       |                            { [] }
+separated_list(X, Y) : separated_list_L(X, Y) { reverse $1 }
 
-separated_nonempty_list(X, Y) : separated_nonempty_list(X, Y) Y X { $3 : $1 }
+separated_nonempty_list(X, Y) : separated_nonempty_list(X, Y) Y X { $1 ++ [$3] }
                               | X                                 { [$1] }
+
+separated_nonempty_list_(X, Y) : X Y separated_nonempty_list_(X, Y) { $1 : $3 }
+                               | X                                  { $1 }
 
 delimited(A, X, B) : A X B { $2 }
 preceded(A, X) : A X { $2 }
@@ -153,6 +159,15 @@ qtysymId : tsymId { QName (fst $ identifierName $1) TypeVariableName (UserName $
 qtysymconId : tsymconId { QName (fst $ identifierName $1) TypeConstructorName (UserName $ snd $ identifierName $1) }
             | tqsymconId { QName (fst $ identifierName $1) TypeConstructorName (UserName $ snd $ identifierName $1) }
 
+svarId : varId { $1 }
+       | delimited('(', symId, ')') { $1 }
+sconId : conId { $1 }
+       | delimited('(', symconId, ')') { $1 }
+
+qsvarId : qvarId { $1 }
+       | delimited('(', qsymId, ')') { $1 }
+qsconId : qconId { $1 }
+       | delimited('(', qsymconId, ')') { $1 }
 -- 
 
 module : moduleHeader moduleBody {% makeModule $1 $2 }
@@ -192,7 +207,7 @@ declaration :: { [VariableDeclaration] }
 
 genDeclaration :: { [VariableDeclaration] }
             -- : fixity option(integer) symId { 0 }
-               : separated_nonempty_list(varId, ',') '::' typeSignature { fmap (flip SignatureDeclaration $3) $1 }
+               : separated_nonempty_list(svarId, ',') '::' typeSignature { fmap (flip SignatureDeclaration $3) $1 }
 
 fixity :: { Fixity }
        : 'infixl' { Infixl }
@@ -200,14 +215,14 @@ fixity :: { Fixity }
        | 'infix'  { Infix }
 
 leftHandSide :: { (SyntaxName, [Pattern SyntaxName]) }
-             : varId nonempty_list(apattern) { ($1, $2) }
+             : svarId nonempty_list(apattern) { ($1, $2) }
 
 rightHandSide :: { Expression SyntaxName } 
               : '=' expression                { $2 }
           --  | '|' expression '=' expression { 0 }
 
 constructor :: { DataConstructor SyntaxName }
-            : conId list(atype)    { DataConstructor $1 $2 }
+            : sconId list(atype)    { DataConstructor $1 $2 }
          -- | btype symconId btype { 0 }
 
 ---- Types
@@ -235,12 +250,12 @@ atype :: { MonoType SyntaxName }
                     (TyConstant (QName ["Primitive"] TypeConstructorName (UserName (replicate (length $1 - 1) ','))))
                     $1
           }
-      | delimited('[', type, ']')                               { TyApplication (TyConstant (QName ["Base"] TypeConstructorName (UserName "[]"))) $1 }
+      | delimited('[', type, ']')                               { TyApplication (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "[]"))) $1 }
 
 gtycon :: { MonoType SyntaxName }
        : '(' ')'                    { TyConstant (QName ["Primitive"] TypeConstructorName (UserName "()")) }
        | '(' nonempty_list(',') ')' { TyConstant (QName ["Primitive"] TypeConstructorName (UserName (replicate (length $2) ','))) }
-       | '[' ']'                    { TyConstant (QName ["Base"] TypeConstructorName (UserName "[]")) }
+       | '[' ']'                    { TyConstant (QName ["Primitive"] TypeConstructorName (UserName "[]")) }
        | '(' '->' ')'               { TyArrow }
        | qtyconId                   { TyConstant $1 }
 
@@ -299,8 +314,8 @@ aexpression :: { Expression SyntaxName }
             | char                                                          { lll $ EChar (charValue $1) }
             | string
                 { foldl
-                  (\a b -> lll $ EApplication (lll $ EApplication (lll $ EVariable (QName ["Base"] ConstructorName (UserName ":"))) a) (lll $ EChar b))
-                  (lll $ EVariable (QName ["Base"] ConstructorName (UserName "[]")))
+                  (\a b -> lll $ EApplication (lll $ EApplication (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName ":"))) a) (lll $ EChar b))
+                  (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName "[]")))
                   (stringValue $1)
                 }
             | delimited('(', separated_list(expression, ','), ')')
@@ -311,8 +326,8 @@ aexpression :: { Expression SyntaxName }
                 }
             | delimited('[', separated_nonempty_list(expression, ','), ']')
                 { foldl
-                  (\a b -> lll $ EApplication (lll $ EApplication (lll $ EVariable (QName ["Base"] ConstructorName (UserName ":"))) a) b)
-                  (lll $ EVariable (QName ["Base"] ConstructorName (UserName "[]")))
+                  (\a b -> lll $ EApplication (lll $ EApplication (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName ":"))) a) b)
+                  (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName "[]")))
                   $1
                 }
 
