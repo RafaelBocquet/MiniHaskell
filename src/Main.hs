@@ -48,6 +48,7 @@ parseOnly fn = do
         Left e -> putStrLn.show $ e
         Right e -> putStrLn $ "GOOD"
 
+
 typecheckOnly :: [String] -> IO ()
 typecheckOnly fn = do
   putStrLn $ show fn ++ " : "
@@ -64,26 +65,11 @@ typecheckOnly fn = do
             Left e -> return (putStrLn.show $ e)
             Right ps -> do
               r <- typecheck (makeModuleMap $ primitiveModule : p1 : ps)
-              return $ putStrLn.show $ r
-              return $ putStrLn.show $ r
+              return $ putStrLn . show $ r
   where
-    f (Left e) _ = Left e
-    f (Right rs) (Left e) = Left e
+    f (Left e) _           = Left e
+    f (Right rs) (Left e)  = Left e
     f (Right rs) (Right r) = Right $ r : rs
-
---parseOnlyFull :: String -> IO ()
---parseOnlyFull fn = do
---  putStrLn $ fn ++ " : "
---  putStr "\t"
---  str <- readFile fn
---  case Full.tokenise str of
---    ts -> do
---      putStrLn.show $ ts
---      flip evalState 0 $ do
---        ps <- Full.runParse $ Full.parseModule ts
---        case ps of
---          Left e -> return (putStrLn.show $ e)
---          Right ps -> return (putStrLn.show $ ps)
 
 typecheckOnlyFull :: [String] -> IO ()
 typecheckOnlyFull fn = do
@@ -98,9 +84,10 @@ typecheckOnlyFull fn = do
         r <- typecheck (makeModuleMap $ primitiveModule : ps)
         return $ putStrLn.show $ r
   where
-    f (Left e) _ = Left e
-    f (Right rs) (Left e) = Left e
+    f (Left e) _           = Left e
+    f (Right rs) (Left e)  = Left e
     f (Right rs) (Right r) = Right $ r : rs
+
 main :: IO ()
 main = do
   (flags, filenames) <- partition isFlag <$> getArgs

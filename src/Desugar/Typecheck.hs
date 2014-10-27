@@ -120,11 +120,11 @@ data PatternList = PatternListExpression (Expression CoreName)
 patternListInsert :: ([Pattern CoreName], Expression CoreName) -> PatternList -> PatternList
 patternListInsert (pat:pats, e) (PatternListMap mp) = 
   PatternListMap $ Map.alter (Just . patternListInsert (pats, e) . maybe (PatternListMap Map.empty) id) pat mp 
-patternListInsert ([], e) _                = PatternListExpression e
+patternListInsert ([], e) _                         = PatternListExpression e
 
 reducePatternList :: Maybe (Expression CoreName) -> [CoreName] -> PatternList -> Expression CoreName
 reducePatternList df [] (PatternListExpression e) = e
-reducePatternList df (v:vs) (PatternListMap mp) =
+reducePatternList df (v:vs) (PatternListMap mp)   =
   Locate noLocation $ ECase (Locate noLocation $ EVariable (QName [] VariableName v)) (Map.toList . Map.map (reducePatternList df vs) $ mp)
 
 typecheckPatterns :: Expression CoreName -> [(Pattern CoreName, Expression CoreName)] -> TypecheckMonad C.Expression
@@ -153,12 +153,12 @@ typecheckPatterns epat pats = do
       case t of
         Nothing              -> throwError $ UnboundConstructor con
         Just (PolyType _ ty) -> C.DataPatternGroupType <$> constructorDataType ty
-    patternGroupType (PLiteralInt _)         = return $ C.IntPatternGroupType
-    patternGroupType (PLiteralChar _)        = return $ C.CharPatternGroupType
+    patternGroupType (PLiteralInt _)     = return $ C.IntPatternGroupType
+    patternGroupType (PLiteralChar _)    = return $ C.CharPatternGroupType
 
     patternGroupCombine C.NoPatternGroupType p                                               = return p
     patternGroupCombine (C.DataPatternGroupType dc) C.NoPatternGroupType                     = return $ C.DataPatternGroupType dc
-    patternGroupCombine (C.DataPatternGroupType dc) (C.DataPatternGroupType dc') | dc == dc' = return $ C.DataPatternGroupType dc
+    patternGroupCombine (C.DataPatternGroupType dc) (C.DataPatternGroupType dc') | dc == dc'  = return $ C.DataPatternGroupType dc
     patternGroupCombine (C.DataPatternGroupType dc) (C.DataPatternGroupType dc') | otherwise = throwError $ CantMatchPatternTypes dc dc'
     patternGroupCombine (C.DataPatternGroupType dc) _                                        = throwError UnknownError
 
@@ -266,10 +266,10 @@ typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> 
       tau     <- generateName
       eTy     <- localBind x (PolyType Set.empty (TyVariable tau)) $ typecheckExpression e
       return $ C.Expression (makeTypeApplication TyArrow [TyVariable tau, C.expressionType eTy]) (C.ELambda x eTy)
-    typecheckExpression' (ETuple es)                                  = do
-      ts <- mapM typecheckExpression es
-      tyTuple <- TyConstant <$> getPrimitive TypeConstructorName (replicate (length es - 1) ',')
-      return $ C.Expression (makeTypeApplication tyTuple (C.expressionType <$> ts)) (C.ETuple ts)
+    -- typecheckExpression' (ETuple es)                                  = do
+    --   ts <- mapM typecheckExpression es
+    --   tyTuple <- TyConstant <$> getPrimitive TypeConstructorName (replicate (length es - 1) ',')
+    --   return $ C.Expression (makeTypeApplication tyTuple (C.expressionType <$> ts)) (C.ETuple ts)
     typecheckExpression' (ELet bs e)                                  = do
       bts <- typecheckBindings [] bs
       eTy <- localBindMany (Map.map fst bts) $ typecheckExpression e
@@ -293,55 +293,55 @@ primitiveType :: PrimitiveDeclaration -> TypecheckMonad (MonoType CoreName)
 primitiveType p 
   | p `elem` [ PrimitiveIntAdd, PrimitiveIntSub, PrimitiveIntMul, PrimitiveIntDiv, PrimitiveIntRem ]
       = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
     return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyInt]]
   | p `elem` [ PrimitiveIntNegate ]
-      = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+                = do
+    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
     return $ makeTypeApplication TyArrow [tyInt, tyInt]
   | p `elem` [ PrimitiveIntLT, PrimitiveIntLE, PrimitiveIntGT, PrimitiveIntGE, PrimitiveIntEQ, PrimitiveIntNE ]
-      = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
-    tyBool  <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
+                = do
+    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyBool <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
     return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyBool]]
   | p `elem` [ PrimitiveOrd ]
-      = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
-    tyChar   <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
+                = do
+    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyChar <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
     return $ makeTypeApplication TyArrow [tyChar, tyInt]
   | p `elem` [ PrimitiveChr ]
-      = do
-    tyInt   <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
-    tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
+                = do
+    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyChar <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
     return $ makeTypeApplication TyArrow [tyInt, tyChar]
   | p `elem` [ PrimitiveCharLT, PrimitiveCharLE, PrimitiveCharGT, PrimitiveCharGE, PrimitiveCharEQ, PrimitiveCharNE ]
-      = do
-    tyChar  <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
-    tyBool  <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
+                = do
+    tyChar <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
+    tyBool <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
     return $ makeTypeApplication TyArrow [tyChar, makeTypeApplication TyArrow [tyChar, tyBool]]
   | p `elem` [ PrimitiveBind ]
-      = do
-    tyIO <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
-    a <- TyVariable <$> generateName
-    b <- TyVariable <$> generateName
+                = do
+    tyIO   <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
+    a      <- TyVariable <$> generateName
+    b      <- TyVariable <$> generateName
     let tyArrow = makeTypeApplication TyArrow
     return $ tyArrow [tyIO [a], tyArrow [tyArrow [a, tyIO [b]], tyIO [b]]]
   | p `elem` [ PrimitiveReturn ]
-      = do
-    tyIO  <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
-    a <- TyVariable <$> generateName
+                = do
+    tyIO   <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
+    a      <- TyVariable <$> generateName
     return $ makeTypeApplication TyArrow [a, tyIO [a]]
   | p `elem` [ PrimitivePutChar ]
-      = do
-    tyIO  <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
+                = do
+    tyIO   <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
     tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
     tyUnit <- TyConstant <$> getPrimitive TypeConstructorName "()"
     return $ makeTypeApplication TyArrow [tyChar, tyIO [tyUnit]]
   | p `elem` [ PrimitiveError ]
-      = do
+                = do
     tyList <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "List"
     tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
-    a <- TyVariable <$> generateName
+    a      <- TyVariable <$> generateName
     return $ makeTypeApplication TyArrow [tyList [tyChar], a]
 
 typecheckBindings :: ModuleName -> DeclarationMap CoreName -> TypecheckMonad C.DeclarationMap
@@ -398,22 +398,29 @@ typecheckBindings md bs = do
       let tvs = uncurry PolyType <$> zip ((`Set.difference` freeG) . freeTypeVariables <$> ts) ts
       return $ Map.fromList $ zip xs (zip tvs esTy)
 
-typecheckDataConstructor :: ModuleName -> MonoType CoreName -> Set CoreName -> DataConstructor CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
+typecheckDataConstructor :: ModuleName -> MonoType CoreName -> Set CoreName -> DataConstructor CoreName -> TypecheckMonad (C.DataConstructor, Map QCoreName (PolyType CoreName))
 typecheckDataConstructor md ty tvs (DataConstructor n ts) = do
-  return $ Map.singleton (QName md ConstructorName n) $ PolyType tvs $ foldr (\a b -> makeTypeApplication TyArrow [a, b]) ty ts
+  let cname = QName md ConstructorName n
+      ctype = PolyType tvs $ foldr (\a b -> makeTypeApplication TyArrow [a, b]) ty ts
+  return $ (C.DataConstructor cname ts ctype, Map.singleton cname ctype)
 
-typecheckTypeDeclaration :: ModuleName -> QCoreName -> TypeDeclaration CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
+typecheckTypeDeclaration :: ModuleName -> QCoreName -> TypeDeclaration CoreName -> TypecheckMonad (Maybe C.DataDeclaration, Map QCoreName (PolyType CoreName))
 typecheckTypeDeclaration md n (DataDeclaration tvs dcs) = do
-  let ty = makeTypeApplication (TyConstant n) (TyVariable <$> tvs)
-  Map.unions <$> typecheckDataConstructor md ty (Set.fromList tvs) `mapM` dcs
-typecheckTypeDeclaration md n (PrimitiveDataDeclaration prim) = return Map.empty
+  let ty  = makeTypeApplication (TyConstant n) (TyVariable <$> tvs)
+  dcs' <- typecheckDataConstructor md ty (Set.fromList tvs) `mapM` dcs
+  return (Just $ C.DataDeclaration tvs (fst <$> dcs'), Map.unions (snd <$> dcs'))
+typecheckTypeDeclaration md n (PrimitiveDataDeclaration prim) = return (Just $ C.PrimitiveDataDeclaration prim, Map.empty)
 
-typecheckTypeDeclarations :: ModuleName -> TypeDeclarationMap CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
+typecheckTypeDeclarations :: ModuleName -> TypeDeclarationMap CoreName -> TypecheckMonad (C.DataDeclarationMap, Map QCoreName (PolyType CoreName))
 typecheckTypeDeclarations md ds = do
-  fmap Map.unions $ forM (Map.toList ds) $ \(k, v) -> typecheckTypeDeclaration md (QName md TypeConstructorName k) v
+  ds' <- forM (Map.toList ds) $ \(k, v) -> do
+    let name = QName md TypeConstructorName k
+    (a, b) <- typecheckTypeDeclaration md name v
+    return (maybe Nothing (\a -> Just (name, a)) a, b)
+  return (Map.fromList . fmap fromJust . filter isJust $ fst <$> ds', Map.unions $ snd <$> ds')
 
 typecheckModule :: Module CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName), C.Module)
 typecheckModule (Module md is ds bs) = do
-  ds' <- typecheckTypeDeclarations md ds
+  (dds', ds') <- typecheckTypeDeclarations md ds
   bs' <- globalBindMany ds' $ typecheckBindings md bs
-  return (Map.union ds' $ Map.map fst . Map.mapKeys (QName md VariableName) $ bs', C.Module md bs')
+  return (Map.union ds' $ Map.map fst . Map.mapKeys (QName md VariableName) $ bs', C.Module md dds' bs')

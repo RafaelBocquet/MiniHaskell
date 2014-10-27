@@ -6,7 +6,7 @@ import Data.Char
 
 data Token' = TkIdentifier [String] String
             -- Literals
-            | TkInteger Integer
+            | TkInteger Int
             | TkChar Char
             | TkString String
             -- Keywords
@@ -101,7 +101,7 @@ isQSymbolConstructorIdentifier _                        = False
 identifierName :: Token' -> ([String], String)
 identifierName (TkIdentifier a b) = (a, b)
 
-integerValue :: Token' -> Integer
+integerValue :: Token' -> Int
 integerValue (TkInteger i) = i
 
 charValue :: Token' -> Char

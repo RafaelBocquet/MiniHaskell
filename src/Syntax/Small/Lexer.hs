@@ -167,10 +167,10 @@ lexIdentifier = do
           (c :) <$> lexIdentifier'
         else return ""
 
-lexInteger :: Lexer Integer
+lexInteger :: Lexer Int
 lexInteger = lexInteger' 0
   where
-    lexInteger' :: Integer -> Lexer Integer
+    lexInteger' :: Int -> Lexer Int
     lexInteger' i = do
       c <- nextChar
       if isDigit c

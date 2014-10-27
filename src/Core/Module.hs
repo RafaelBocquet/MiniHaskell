@@ -2,8 +2,14 @@ module Core.Module where
 
 import Core.Expression
 
-data Module = Module [String] DeclarationMap
-            deriving (Show)
+data Module = Module
+  { moduleName               :: [String]
+  , moduleDataDeclarationMap :: DataDeclarationMap
+  , moduleDeclarationMap     :: DeclarationMap
+  }
+  deriving (Show)
 
-moduleDeclarationMap :: Module -> DeclarationMap
-moduleDeclarationMap (Module _ d) = d
+-- Type -> Machine Type
+-- (Function kind) -> Arity to machine type
+-- Primitive -> Unboxed
+-- Other (Data type : boxed)

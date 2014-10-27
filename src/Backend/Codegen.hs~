@@ -1,0 +1,9 @@
+module Backend.Codegen where
+
+codegenModule :: Module -> MipsMonad ()
+codegenModule _ = undefined
+
+codegenExpression :: Expression -> MipsMonad ()
+codegenExpression = codegenExpression' . expressionType
+  where
+    codegenExpression' 

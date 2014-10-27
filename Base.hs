@@ -18,11 +18,11 @@ module Base where {
 
 ; (<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
 ; (<)  (Int a) (Int b) = intLT_prim a b
-; (<=) (Int a) (Int b) = intLE_prim a b
+; (<=) (Int a) (Int b)  = intLE_prim a b
 ; (>)  (Int a) (Int b) = intGT_prim a b
-; (>=) (Int a) (Int b) = intGE_prim a b
-; (==) (Int a) (Int b) = intEQ_prim a b
-; (/=) (Int a) (Int b) = intNE_prim a b
+; (>=) (Int a) (Int b)  = intGE_prim a b
+; (==) (Int a) (Int b)  = intEQ_prim a b
+; (/=) (Int a) (Int b)  = intNE_prim a b
 
 ; fromInteger x = x
 
@@ -48,6 +48,9 @@ module Base where {
 -- 
 ; id :: a -> a
 ; id x = x
+
+; (.) :: (b -> c) -> (a -> b) -> (a -> c)
+; (.) f g x = f (g x)
 
 ; const :: a -> b -> a
 ; const x _ = x

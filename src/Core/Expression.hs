@@ -13,14 +13,12 @@ import Syntax.Name
 
 import qualified Syntax.Expression as S
 
-data Expression' = EInteger Integer                                             -- OK
-                 | EChar Char                                                   -- OK
-                 | EBool Bool                                                   -- OK
-                 | EVariable QCoreName                                          -- ~OK
-                 | EApplication Expression Expression                           -- ~OK
-                 | ELambda CoreName Expression                                  -- ~OK
-                 | ETuple [Expression]                                          -- OK
-                 | ELet DeclarationMap Expression                               -- ~OK
+data Expression' = EInteger Int
+                 | EChar Char
+                 | EVariable QCoreName
+                 | EApplication Expression Expression
+                 | ELambda CoreName Expression
+                 | ELet DeclarationMap Expression
                  | ECase Expression PatternGroup
                  deriving (Show)
 
@@ -42,11 +40,47 @@ data Expression = Expression
   }
   deriving (Show)
 
+expressionFreeVariables :: Expression -> Set CoreName
+expressionFreeVariables = expressionFreeVariables' . expressionValue
+  where
+    expressionFreeVariables' (EInteger _) = Set.empty
+    expressionFreeVariables' (EChar _) = Set.empty
+    expressionFreeVariables' (EVariable (QName [] VariableName v)) = Set.singleton v
+    expressionFreeVariables' (EApplication f t) = Set.union (expressionFreeVariables f) (expressionFreeVariables t)
+    expressionFreeVariables' (ELambda x e) = Set.delete x $ expressionFreeVariables e
+    expressionFreeVariables' (ELet ds e) = Set.difference
+                                           (Set.union
+                                            (Set.unions . fmap (\(_, (_, d)) -> declarationFreeVariables d) $ Map.toList ds)
+                                            (expressionFreeVariables e)
+                                           )
+                                           (Set.fromList $ fmap fst $ Map.toList ds)
+    expressionFreeVariables' (ECase e p) = Set.union (expressionFreeVariables e) (patternFreeVariables p)
+
+patternFreeVariables :: PatternGroup -> Set CoreName
+patternFreeVariables (PData alts df) = Set.union
+                                       (Set.unions $ fmap (\(_, (vs, e)) -> Set.difference (expressionFreeVariables e) (Set.fromList vs)) (Map.toList alts))
+                                       (maybe Set.empty expressionFreeVariables df)
+patternFreeVariables (PInt alts df)  = Set.union
+                                       (Set.unions $ fmap (expressionFreeVariables . snd) (Map.toList alts))
+                                       (maybe Set.empty expressionFreeVariables df)
+patternFreeVariables (PChar alts df) = Set.union
+                                       (Set.unions $ fmap (expressionFreeVariables . snd) (Map.toList alts))
+                                       (maybe Set.empty expressionFreeVariables df)
+
+declarationFreeVariables :: Declaration -> Set CoreName
+declarationFreeVariables (Declaration e)          = expressionFreeVariables e
+declarationFreeVariables (PrimitiveDeclaration _) = Set.empty
+
 data Declaration = Declaration Expression
                  | PrimitiveDeclaration S.PrimitiveDeclaration
                  deriving (Show)
 
 type DeclarationMap = Map CoreName (PolyType CoreName, Declaration)
 
-data DataDeclaration    = NONENONENONE
-type DataDeclarationMap = Map CoreName DataDeclaration
+
+data DataConstructor          = DataConstructor QCoreName [MonoType CoreName] (PolyType CoreName)
+                              deriving (Show)
+data DataDeclaration          = DataDeclaration [CoreName] [DataConstructor]
+                              | PrimitiveDataDeclaration S.PrimitiveDataDeclaration
+                              deriving (Show)
+type DataDeclarationMap       = Map QCoreName DataDeclaration

@@ -5,7 +5,7 @@ import Syntax.Location
 data Token' = TkIdentifier0 String
             | TkIdentifier1 String
             -- Literals
-            | TkInteger Integer
+            | TkInteger Int
             | TkChar Char
             | TkString String
             | TkTrue

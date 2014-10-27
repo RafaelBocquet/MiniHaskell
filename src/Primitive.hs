@@ -23,13 +23,13 @@ primitiveModule = Module
       [ (UserName "Int_prim",  PrimitiveDataDeclaration UnboxedIntDataDeclaration)
       , (UserName "Char_prim", PrimitiveDataDeclaration UnboxedCharDataDeclaration)
       , (UserName "Bool",      DataDeclaration [] [DataConstructor (UserName "True") [], DataConstructor (UserName "False") []])
-      , (UserName "List",      DataDeclaration [UserName "a"]
-                                [ DataConstructor (UserName "[]") []
-                                , DataConstructor (UserName ":")
-                                  [ TyVariable (UserName "a")
-                                  , TyApplication (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "List"))) (TyVariable (UserName "a"))
-                                  ]
-                                ]
+      , (UserName "[]",        DataDeclaration [UserName "a"]
+                               [ DataConstructor (UserName "[]") []
+                               , DataConstructor (UserName ":")
+                                 [ TyVariable (UserName "a")
+                                 , TyApplication (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "List"))) (TyVariable (UserName "a"))
+                                 ]
+                               ]
         )
       , (UserName "()",        DataDeclaration [] [DataConstructor (UserName "()") []])
       , (UserName "",          DataDeclaration [] [DataConstructor (UserName "") []])
@@ -38,7 +38,7 @@ primitiveModule = Module
               ( UserName (replicate (n-1) ',')
               , DataDeclaration (take n tupleVariables) [DataConstructor (UserName (replicate (n-1) ',')) $ TyVariable <$> take n tupleVariables]
               )
-           ) <$> [2..4])
+            ) <$> [2..4])
   , moduleDeclarations     = Map.fromList
       [ (UserName "add_prim",    PrimitiveDeclaration PrimitiveIntAdd)
       , (UserName "sub_prim",    PrimitiveDeclaration PrimitiveIntSub)
