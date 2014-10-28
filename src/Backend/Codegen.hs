@@ -25,15 +25,16 @@ import Control.Monad.Writer
 
 data IRegister = Unknown Int
                | Known ERegister
+               deriving (Eq, Ord, Show)
 data ERegister = Physical MipsRegister
                | Stack Int
-               | Block Int
+               deriving (Eq, Ord, Show)
 
 data Instruction r = IConst Int r
                    | ILoadGlobal QCoreName r
                    | IApply r r r
                    | ILet [(r, [r], Int, [EInstruction])]
-                   | IDataCase r (Map Int ([r], [Instruction r])) (Maybe [Instruction r]) r
+                   | IDataCase r (Map Int ([r], [Instruction r])) (Maybe [Instruction r])
                    | IMove r r
 
 type IInstruction = Instruction IRegister
@@ -42,8 +43,67 @@ type EInstruction = Instruction ERegister
 explicitRegisters :: [IInstruction] -> [EInstruction]
 explicitRegisters = undefined
 
+moveRegister :: ERegister -> ERegister -> SectionMonad ()
+moveRegister r r' | r == r'                         = return ()
+moveRegister (Physical r) (Physical r')            = do
+  l  r' r
+moveRegister (Physical r) (Stack r')               = do
+  sw r  r' sp
+moveRegister (Stack r) (Physical r')               = do
+  lw r' r  sp
+moveRegister (Stack r) (Stack r')                  = do
+  lw t0 r  sp
+  sw t0 r' sp
+
+-- + Stack offset, because of continuations
+codegenExplicitMips :: [EInstruction] -> SectionMonad ()
+codegenExplicitMips is = do
+  forM_ is codegenExplicitMips'
+  where
+    codegenExplicitMips' (IConst i (Physical r))                       = do
+      li r  i
+    codegenExplicitMips' (IConst i (Stack s))                          = do
+      li t0 i
+      sw t0 s sp
+    codegenExplicitMips' (IMove r r')                                  = moveRegister r r'
+    codegenExplicitMips' (IDataCase r alts df)              = do
+      lbl_continuation <- newLabel
+      alt_labels <- forM (Map.toList alts) (const newLabel)
+      fail_label <- global "runtime_fail"
+      
+      sub sp sp (4 :: Int)
+      l   t0 lbl_continuation
+      sw  t0 0 sp  -- Setup continuation
+      
+      moveRegister r (Physical rt) -- Eval thunk
+      lw  t0 0 rt
+      j   t0
+
+-- *  r, rt  *
+--    |
+--    v
+-- * code_ptr * tag * data1 * data2 * ... *
+
+      label lbl_continuation
+      add sp sp (4 :: Int) -- Remove continuation from the top of the stack
+      -- rt is now a pointer to an evaluated thunk
+      lw t1 4 rt
+      forM_ (zip (Map.toList alts) alt_labels) $ \((tag, _), lbl) -> do
+        li  t0 tag
+        beq t0 t1 lbl
+      case df of
+        Nothing -> j fail_label
+        Just df -> codegenExplicitMips df
+      forM_ (zip (Map.toList alts) alt_labels) $ \((_, (rs, is)), lbl) -> do
+        label lbl
+        forM_ (zip rs [8,16..]) $ \(r, i) -> do
+          lw t1 i rt
+          moveRegister (Physical t1) r
+        codegenExplicitMips is
+type ConstructorTags = Map QCoreName Int
+
 data CodegenEnvironment = CodegenEnvironment
-  { codegenConstructorTags   :: Map QCoreName Int
+  { codegenConstructorTags   :: ConstructorTags
   , codegenVariableRegisters :: Map CoreName IRegister
   }
 
@@ -84,6 +144,10 @@ bindVariables vs m = do
   a <- local (\s -> s { codegenVariableRegisters = Map.union (Map.fromList $ zip vs rs) (codegenVariableRegisters s) }) m
   return (rs, a)
 
+bindStackVariables :: [CoreName] -> CodegenMonad a -> CodegenMonad a
+bindStackVariables vs m =
+  local (\s -> s { codegenVariableRegisters = Map.union (Map.fromList $ zip vs (fmap (\i -> Known $ Stack i) [0..])) (codegenVariableRegisters s)}) m
+
 constInt :: Int -> CodegenMonad IRegister
 constInt i = do
   r <- newRegister
@@ -108,17 +172,34 @@ closure x e = do
   r <- newRegister
   (fvrs, es) <- do
     fvrs <- getVariable `mapM` fvs
-    -- TODO bind Variables, from Stack registers
-    es <- localCodegen $ do
+    es <- bindStackVariables fvs $ localCodegen $ do
           r <- codegenExpression e
           tell (Endo (IMove r (Known (Physical rt)) :))
     return (fvrs, es)
   tell (Endo (ILet [(r, fvrs, length fvrs + 1, es)] :))
   return r
-  
-codegenModule :: Module -> MipsMonad ()
-codegenModule (Module md dds ds) = undefined
 
+moduleConstructorTags :: Module -> ConstructorTags
+moduleConstructorTags (Module _ dds _) = Map.unions $ fmap dataDeclarationTags $ Map.elems dds
+  where
+    dataDeclarationTags (DataDeclaration _ d)        = Map.fromList $ zip (dataConstructorName <$> d) [0..]
+    dataDeclarationTags (PrimitiveDataDeclaration _) = Map.empty
+
+codegenModule :: ConstructorTags -> Module -> MipsMonad ()
+codegenModule tags (Module md dds ds) = do
+  forM_ (Map.toList ds) $ \(name, decl) -> do
+    -- DATA (in .data)
+    dataSection $ do
+      lbl_entry <- global "pouet_entry"
+      label lbl_entry
+      -- codegenExplicitMips decl
+    -- CLOSURE (in .text)
+    textSection $ do
+      lbl_entry   <- global "pouet_entry"
+      lbl_closure <- global "pouet_closure"
+      label lbl_closure
+      word lbl_entry
+  
 codegenDeclaration :: Declaration -> CodegenMonad IRegister
 codegenDeclaration (Declaration e) = codegenExpression e
 
@@ -142,7 +223,7 @@ codegenExpression = codegenExpression' . expressionValue
         ds <- forM (snd . snd <$> Map.toList ds) $ \d -> do
           let fvs = Set.toList $ declarationFreeVariables d
           fvrs <- getVariable `mapM` fvs
-          es <- localCodegen $ do
+          es <- bindStackVariables fvs $ localCodegen $ do
             r <- codegenDeclaration d
             tell (Endo (IMove r (Known (Physical rt)) :))
           return (fvrs, es)
@@ -161,5 +242,5 @@ codegenExpression = codegenExpression' . expressionValue
         tag           <- constructorTag k
         ((rs, r), is) <- listen $ bindVariables vs $ codegenExpression ec
         return (tag, (rs, appEndo is [IMove r or]))
-      tell (Endo (IDataCase re alts' df' or :))
+      tell (Endo (IDataCase re alts' df' :))
       return or

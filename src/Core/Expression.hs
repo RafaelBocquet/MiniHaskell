@@ -78,7 +78,11 @@ data Declaration = Declaration Expression
 type DeclarationMap = Map CoreName (PolyType CoreName, Declaration)
 
 
-data DataConstructor          = DataConstructor QCoreName [MonoType CoreName] (PolyType CoreName)
+data DataConstructor          = DataConstructor
+                                { dataConstructorName      :: QCoreName
+                                , dataConstructorArguments :: [MonoType CoreName]
+                                , dataConstructorType      :: PolyType CoreName
+                                }
                               deriving (Show)
 data DataDeclaration          = DataDeclaration [CoreName] [DataConstructor]
                               | PrimitiveDataDeclaration S.PrimitiveDataDeclaration
