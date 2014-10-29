@@ -27,7 +27,7 @@ primitiveModule = Module
                                [ DataConstructor (UserName "[]") []
                                , DataConstructor (UserName ":")
                                  [ TyVariable (UserName "a")
-                                 , TyApplication (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "List"))) (TyVariable (UserName "a"))
+                                 , TyApplication (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "[]"))) (TyVariable (UserName "a"))
                                  ]
                                ]
         )

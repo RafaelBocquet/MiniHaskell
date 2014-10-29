@@ -5,6 +5,8 @@ import Syntax.Name
 
 import qualified Core.Module as C
 
+import qualified Reg.Expression as Reg
+
 import Desugar.Rename
 import Desugar.Typecheck
 
@@ -74,3 +76,6 @@ typecheck moduleMap = do
           if Set.member elem elemDep
             then error "Module cycle"
             else topologicalSort (Set.delete elem $ st `Set.difference` elemDep) (elem : topologicalSort (st `Set.intersection` elemDep) acc)
+
+compile :: Map ModuleName C.Module -> State Int (Map QCoreName Reg.Declaration)
+compile mods = Reg.regModules (Map.elems mods)

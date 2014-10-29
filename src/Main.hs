@@ -36,8 +36,8 @@ isFlag :: String -> Bool
 isFlag ('-':'-':_) = True
 isFlag _           = False
 
-parseOnly :: String -> IO ()
-parseOnly fn = do
+parseOnlySmall :: String -> IO ()
+parseOnlySmall fn = do
   putStrLn $ fn ++ " : "
   putStr "\t"
   str <- readFile fn
@@ -49,8 +49,8 @@ parseOnly fn = do
         Right e -> putStrLn $ "GOOD"
 
 
-typecheckOnly :: [String] -> IO ()
-typecheckOnly fn = do
+typecheckOnlySmall :: [String] -> IO ()
+typecheckOnlySmall fn = do
   putStrLn $ show fn ++ " : "
   putStr "\t"
   str1:strs <- readFile `mapM` fn
@@ -88,12 +88,31 @@ typecheckOnlyFull fn = do
     f (Right rs) (Left e)  = Left e
     f (Right rs) (Right r) = Right $ r : rs
 
+compileFull :: [String] -> IO ()
+compileFull fn = do
+  putStrLn $ show fn ++ " : "
+  putStr "\t"
+  strs <- readFile `mapM` fn
+  flip evalState 0 $ do
+    ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs
+    case foldr (flip f) (Right []) ps of
+      Left e -> return (putStrLn.show $ e)
+      Right ps -> do
+        r <- typecheck (makeModuleMap $ primitiveModule : ps)
+        r' <- compile r
+        return $ putStrLn.show $ r'
+  where
+    f (Left e) _           = Left e
+    f (Right rs) (Left e)  = Left e
+    f (Right rs) (Right r) = Right $ r : rs
+          
 main :: IO ()
 main = do
   (flags, filenames) <- partition isFlag <$> getArgs
   case ("--parse-only" `elem` flags, "--typecheck-only" `elem` flags, "--full" `elem` flags) of
-    (True, False, False) -> parseOnly (head filenames)
-    (False, True, False) -> typecheckOnly filenames
+    (True, False, False)   -> parseOnlySmall (head filenames)
+    (False, True, False)   -> typecheckOnlySmall filenames
     -- (True, False, True) -> forM_ filenames parseOnlyFull
-    (False, True, _) -> typecheckOnlyFull filenames
-    _ -> putStrLn "Usage: cmd [--parse-only | --typecheck-only] [--full] FILENAMES...\nUnless the flag --full is used, the first file in filenames is considered to be a small haskell file."
+    (False, True, _)       -> typecheckOnlyFull filenames
+    (False, False, _)      -> compileFull filenames
+    _                      -> putStrLn "Usage: cmd [--parse-only | --typecheck-only] [--full] FILENAMES...\nUnless the flag --full is used, the first file in filenames is considered to be a small haskell file."

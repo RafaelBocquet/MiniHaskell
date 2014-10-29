@@ -7,11 +7,12 @@ import Control.Monad.State
 import Data.Char (ord)
 
 newtype MipsRegister = MipsRegister Int
+                     deriving (Eq, Ord)
 
 instance Show MipsRegister where
   show (MipsRegister i) = "$" ++ show i
 
-zero, v0, sp, hp, rt, a0, a1, a2, a3 :: MipsRegister
+zero, v0, v1, sp, hp, rt, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9 :: MipsRegister
 zero = MipsRegister 0
 
 v0   = MipsRegister 2
@@ -22,7 +23,26 @@ a1   = MipsRegister 5
 a2   = MipsRegister 6
 a3   = MipsRegister 7
 
-t0   = MipsRegister 11
+t0   = MipsRegister 8
+t1   = MipsRegister 9
+t2   = MipsRegister 10
+t3   = MipsRegister 11
+t4   = MipsRegister 12
+t5   = MipsRegister 13
+t6   = MipsRegister 14
+t7   = MipsRegister 15
+
+s0   = MipsRegister 16
+s1   = MipsRegister 17
+s2   = MipsRegister 18
+s3   = MipsRegister 19
+s4   = MipsRegister 20
+s5   = MipsRegister 21
+s6   = MipsRegister 22
+s7   = MipsRegister 23
+
+t8   = MipsRegister 24
+t9   = MipsRegister 25
 
 sp   = MipsRegister 29
 hp   = MipsRegister 30
@@ -85,6 +105,7 @@ data MipsInstruction = Label Address
                      | Sw MipsRegister Int MipsRegister
 
                      | J MipsOperand
+                     | Beq MipsRegister MipsRegister Address
 
                      | Syscall
 
@@ -132,6 +153,10 @@ data Mips = Mips
   , mipsData :: MipsInstructions
   }
 
+instance Monoid Mips where
+  mempty                                = Mips mempty mempty
+  Mips txt dat `mappend` Mips txt' dat' = Mips (txt `mappend` txt') (dat `mappend` dat')
+
 instance Show Mips where
   show (Mips txt dat) =
        "# TODO : Find a suitable header !\n"
@@ -141,54 +166,65 @@ instance Show Mips where
     ++ "\t.data\n"
     ++ show dat
 
-type MipsMonad = WriterT MipsInstructions (State Int)
+type MipsMonad a    = WriterT Mips (State Int) a
+type SectionMonad a = WriterT MipsInstructions (State Int) a
 
-runMips :: MipsMonad () -> MipsMonad () -> Mips
-runMips txt dat = flip evalState 0 $ do
-  txt' <- execWriterT txt
-  dat' <- execWriterT dat
-  return (Mips txt' dat')
+runMips :: MipsMonad () -> Mips
+runMips m = flip evalState 0 $ execWriterT m
 
-newLabel :: MipsMonad Address
+newLabel :: SectionMonad Address
 newLabel = do
   a <- get
   modify (+ 1)
   return $ Address (Left a)
 
-global :: String -> MipsMonad Address
+textSection :: SectionMonad () -> MipsMonad ()
+textSection m = do
+  txt <- lift $ execWriterT m
+  tell (Mips txt mempty)
+
+dataSection :: SectionMonad () -> MipsMonad ()
+dataSection m = do
+  dat <- lift $ execWriterT m
+  tell (Mips mempty dat)
+
+global :: String -> SectionMonad Address
 global s = return (Address (Right s))
 
-label :: Address -> MipsMonad ()
+label :: Address -> SectionMonad ()
 label = tell . Instruction . Label
 
-word :: Operand o => o -> MipsMonad ()
+word :: Operand o => o -> SectionMonad ()
 word a = tell . Instruction $ Word (toOperand a)
 
-add :: Operand o => MipsRegister -> MipsRegister -> o -> MipsMonad ()
+add :: Operand o => MipsRegister -> MipsRegister -> o -> SectionMonad ()
 add t a b = tell . Instruction $ Add t a (toOperand b)
 
-sub :: Operand o => MipsRegister -> MipsRegister -> o -> MipsMonad ()
+sub :: Operand o => MipsRegister -> MipsRegister -> o -> SectionMonad ()
 sub t a b = tell . Instruction $ Sub t a (toOperand b)
 
-l :: Operand o => MipsRegister -> o -> MipsMonad ()
+l :: Operand o => MipsRegister -> o -> SectionMonad ()
 l t a = tell . Instruction $ L t (toOperand a)
 
-li :: MipsRegister -> Int -> MipsMonad ()
+li :: MipsRegister -> Int -> SectionMonad ()
 li t a = tell . Instruction $ L t (OConst a)
 
-lw :: MipsRegister -> Int -> MipsRegister -> MipsMonad ()
+lw :: MipsRegister -> Int -> MipsRegister -> SectionMonad ()
 lw a c b = tell . Instruction $ Lw a c b
 
-sw :: MipsRegister -> Int -> MipsRegister -> MipsMonad ()
+sw :: MipsRegister -> Int -> MipsRegister -> SectionMonad ()
 sw a c b = tell . Instruction $ Sw a c b
 
-j :: Operand o => o -> MipsMonad ()
+j :: Operand o => o -> SectionMonad ()
 j a = tell . Instruction $ J (toOperand a)
 
-syscall :: MipsMonad ()
+beq :: MipsRegister -> MipsRegister -> Address -> SectionMonad ()
+beq a b c = tell . Instruction $ Beq a b c
+
+syscall :: SectionMonad ()
 syscall = (tell . Instruction) Syscall
 
-tst :: MipsMonad ()
+tst :: SectionMonad ()
 tst = do
   li v0 10
   syscall

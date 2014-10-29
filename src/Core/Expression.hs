@@ -18,7 +18,7 @@ data Expression' = EInteger Int
                  | EVariable QCoreName
                  | EApplication Expression Expression
                  | ELambda CoreName Expression
-                 | ELet DeclarationMap Expression
+                 | ELet (Map CoreName (PolyType CoreName, Expression)) Expression
                  | ECase Expression PatternGroup
                  deriving (Show)
 
@@ -31,7 +31,6 @@ data PatternGroupType = DataPatternGroupType QCoreName
 data PatternGroup = PData (Map QCoreName ([CoreName], Expression)) (Maybe Expression)
                   | PInt (Map Int (Expression)) (Maybe Expression)
                   | PChar (Map Char (Expression)) (Maybe Expression)
-                  | PNone Expression
                   deriving (Show)
 
 data Expression = Expression
@@ -50,7 +49,7 @@ expressionFreeVariables = expressionFreeVariables' . expressionValue
     expressionFreeVariables' (ELambda x e) = Set.delete x $ expressionFreeVariables e
     expressionFreeVariables' (ELet ds e) = Set.difference
                                            (Set.union
-                                            (Set.unions . fmap (\(_, (_, d)) -> declarationFreeVariables d) $ Map.toList ds)
+                                            (Set.unions . fmap (\(_, (_, d)) -> expressionFreeVariables d) $ Map.toList ds)
                                             (expressionFreeVariables e)
                                            )
                                            (Set.fromList $ fmap fst $ Map.toList ds)
@@ -78,7 +77,11 @@ data Declaration = Declaration Expression
 type DeclarationMap = Map CoreName (PolyType CoreName, Declaration)
 
 
-data DataConstructor          = DataConstructor QCoreName [MonoType CoreName] (PolyType CoreName)
+data DataConstructor          = DataConstructor
+                                { dataConstructorName      :: QCoreName
+                                , dataConstructorArguments :: [MonoType CoreName]
+                                , dataConstructorType      :: PolyType CoreName
+                                }
                               deriving (Show)
 data DataDeclaration          = DataDeclaration [CoreName] [DataConstructor]
                               | PrimitiveDataDeclaration S.PrimitiveDataDeclaration

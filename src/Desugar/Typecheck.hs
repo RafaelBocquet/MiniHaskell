@@ -177,7 +177,7 @@ typecheckPatterns epat pats = do
       (Pattern PWildcard [], e):[]   -> do
         epat' <- typecheckExpression epat
         e'    <- typecheckExpression e
-        return $ C.Expression (C.expressionType e') (C.ECase epat' (C.PNone e'))
+        return $ e'
       (Pattern PWildcard vs, e):[]   -> do
         epat' <- typecheckExpression epat
         e'    <- localBindMany (Map.fromList $ (\v -> (v, PolyType Set.empty (C.expressionType epat'))) <$> vs) $ typecheckExpression e
@@ -186,21 +186,17 @@ typecheckPatterns epat pats = do
               (C.ELet (Map.fromList
                         $ ( head vs
                           , ( PolyType Set.empty (C.expressionType epat')
-                            , C.Declaration
-                                epat'
+                            , epat'
                             )
                           )
                         : fmap (\v -> ( v
                                       , ( PolyType Set.empty (C.expressionType epat')
-                                        , C.Declaration
-                                            (C.Expression (C.expressionType epat') (C.EVariable (QName [] VariableName (head vs))))
+                                        , C.Expression (C.expressionType epat') (C.EVariable (QName [] VariableName (head vs)))
                                         )
                                       )
                                ) (tail vs)
                       )
-                $ C.Expression
-                    (C.expressionType e')
-                    (C.ECase (C.Expression (C.expressionType epat') (C.EVariable (QName [] VariableName (head vs)))) (C.PNone e'))
+                $ e'
               )
 
     typecheckPatternGroupTypeData dc pats = do
@@ -234,7 +230,7 @@ typecheckPatterns epat pats = do
           liftUnify $ unifyType (C.expressionType ecase) sigma
           return (con, (vars, ecase))
       return
-        $ maybe id (\v -> C.Expression sigma . C.ELet (Map.singleton v (PolyType Set.empty (C.expressionType (fromJust df')), C.Declaration $ fromJust df'))) dfvar
+        $ maybe id (\v -> C.Expression sigma . C.ELet (Map.singleton v (PolyType Set.empty (C.expressionType (fromJust df')), fromJust df'))) dfvar
           $ C.Expression sigma $ C.ECase epat' $ C.PData cases (C.Expression sigma . C.EVariable . QName [] VariableName <$> dfvar)
 
 typecheckExpression :: Expression CoreName -> TypecheckMonad C.Expression
@@ -273,7 +269,7 @@ typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> 
     typecheckExpression' (ELet bs e)                                  = do
       bts <- typecheckBindings [] bs
       eTy <- localBindMany (Map.map fst bts) $ typecheckExpression e
-      return $ C.Expression (C.expressionType eTy) (C.ELet bts eTy)
+      return $ C.Expression (C.expressionType eTy) (C.ELet (Map.map (\(ty, C.Declaration e) -> (ty, e)) bts) eTy)
     typecheckExpression' (ECase e pats)                               = typecheckPatterns e pats
 
 
@@ -339,7 +335,7 @@ primitiveType p
     return $ makeTypeApplication TyArrow [tyChar, tyIO [tyUnit]]
   | p `elem` [ PrimitiveError ]
                 = do
-    tyList <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "List"
+    tyList <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "[]"
     tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
     a      <- TyVariable <$> generateName
     return $ makeTypeApplication TyArrow [tyList [tyChar], a]
