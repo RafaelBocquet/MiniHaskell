@@ -58,6 +58,7 @@ data Atom = ALocal CoreName
 
 data Declaration = Declaration Expression
                  | PrimitiveDeclaration S.PrimitiveDeclaration
+                 | DataConstructorDeclaration Int Int
                  deriving (Show)
 
 atomFreeVariables :: Atom -> Set CoreName
@@ -68,7 +69,7 @@ expressionFreeVariables :: Expression -> Set CoreName
 expressionFreeVariables (EApplication a as)   = Set.unions (atomFreeVariables a
                                                             : fmap atomFreeVariables as
                                                            )
-expressionFreeVariables (ELet bs e)           = Set.unions (expressionFreeVariables e
+expressionFreeVariables (ELet bs e)           = Set.unions (expressionFreeVariables e `Set.difference` (Set.fromList $ fmap (\(v, _, _) -> v) bs)
                                                             : fmap (\(v, vs, e) -> expressionFreeVariables e `Set.difference` Set.fromList (v : vs)) bs
                                                            )
 expressionFreeVariables (EDataCase a alts df) = Set.unions (atomFreeVariables a
@@ -80,7 +81,7 @@ expressionVariables :: Expression -> Set CoreName
 expressionVariables (EApplication a as)     = Set.unions (atomFreeVariables a
                                                           : fmap atomFreeVariables as
                                                          )
-expressionVariables (ELet bs e)             = Set.unions (expressionVariables e
+expressionVariables (ELet bs e)             = Set.unions ( expressionVariables e
                                                           : fmap (\(v, vs, e) -> expressionFreeVariables e `Set.difference` Set.fromList vs) bs
                                                          )
 expressionVariables e@(EDataCase a alts df) = Set.unions (atomFreeVariables a
@@ -116,7 +117,7 @@ dataDeclarationGlobalArities (C.PrimitiveDataDeclaration _) = Map.empty
 
 typeArity :: MonoType CoreName -> Int
 typeArity (TyApplication (TyApplication TyArrow _) b) = 1 + typeArity b
-typeArity _                              = 0
+typeArity _                                           = 0
 
 -- RegMonad
 
@@ -149,13 +150,17 @@ regModules mods =
   runReg (RegEnvironment tags arities) $ fmap Map.unions $ regModule `mapM` mods
 
 regModule :: C.Module -> RegMonad (Map QCoreName Declaration)
-regModule (C.Module md _ ds) = do
-  fmap Map.fromList $ forM (Map.toList ds) $ \(n, (_, e)) -> do
-    case e of
-     C.Declaration e             -> do
-       e' <- regExpression e
-       return (QName md VariableName n, Declaration e')
-     C.PrimitiveDeclaration prim -> return (QName md VariableName n, PrimitiveDeclaration prim)
+regModule (C.Module md dds ds) = do
+  ds' <- fmap Map.fromList $ forM (Map.toList ds) $ \(n, (_, e)) -> case e of
+    C.Declaration e             -> do
+      e' <- regExpression e
+      return (QName md VariableName n, Declaration e')
+    C.PrimitiveDeclaration prim -> return (QName md VariableName n, PrimitiveDeclaration prim)
+  tags    <- regConstructorTags <$> ask
+  arities <- regGlobalArities   <$> ask
+  dds' <- fmap Map.fromList $ forM (Map.toList tags) $ \(n, tag) ->
+    return (n, DataConstructorDeclaration tag (fromJust $ Map.lookup n arities))
+  return $ Map.union dds' ds'
 
 regExpression :: C.Expression -> RegMonad Expression
 regExpression = regExpression' . C.expressionValue

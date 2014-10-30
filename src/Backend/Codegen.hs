@@ -7,6 +7,7 @@ import Reg.Graph
 
 import Backend.Mips
 import Backend.Mangle
+import Backend.Runtime
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -24,50 +25,66 @@ import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.Writer
 
+import Debug.Trace
+
 -- Use v0, v1 as temporary registers
 
 codegenExpression :: Expression -> SectionMonad ()
-codegenExpression e =
-  let (stk, c) = colorGraph (makeGraph e) 0 in
-   codegenExpression' e c
+codegenExpression e = do
+  let (stk, c) = colorGraph (makeGraph e) Map.empty 0
+  sub sp sp stk
+  codegenExpression' e c stk
   where
+    -- TODO : we must resize the stack accordingly
     -- Application to known functions
-    codegenExpression' (EApplication (AGlobal f ar) xs) c = do
-      f_label <- global $ mangle f
-      case compare ar (length xs) of
-       LT -> undefined
-       EQ -> do -- Exact arity
-         sub sp sp (4 * ar)
-         forM (zip xs [4,8..]) $ uncurry pushArgument
-       GT -> do
-         sub sp sp (4 * (length xs + 1))
-         forM (take ar $ zip xs [4,8..]) $ uncurry pushArgument
-         -- TODO : push generic apply
-         forM (drop ar $ zip xs [8,12..]) $ uncurry pushArgument
-      j f_label
+    codegenExpression' (EApplication (AGlobal f ar) xs) c sSize = do
+      f_label <- global $ "_closure_" ++ mangle f
+      
+      sub sp sp (4 * nStackSize)
+      forM [sSize-1, sSize-2 .. 0] $ \i -> do
+        lw v0 (4 * nStackSize + i) sp
+        sw v0 (4 * i) sp
+      forM (zip xs [0,4..]) $ uncurry pushArgument
+      forM [1..ar `div` maxSingleApplication] $ \i -> do
+        l v0 =<< global ("_runtime_apply_continuation_" ++ show (if i == ar `div` maxSingleApplication then ar else maxSingleApplication))
+        sw v0 (4 * i * maxSingleApplication) sp
+      add sp sp (4 * sSize)
+
+      l rt f_label
+      j =<< global ("_runtime_apply_continuation_" ++ show (min maxSingleApplication ar))
       where
+        nStackSize = ar + ar `div` maxSingleApplication
+        stackSlot i = sSize + i + i `div` maxSingleApplication
         pushArgument x i = case x of
-          ALocal v    -> case fromJust $ Map.lookup v c of
+          ALocal v -> case fromJust $ Map.lookup v c of
             Physical r ->
-              sw r i sp
+              sw r (4 * (stackSlot i)) sp
             Stack j    -> do
-              lw v0 (4 * ar + j) sp
-              sw v0 i sp
+              lw v0 j sp
+              sw v0 (4 * (stackSlot i)) sp
           AGlobal n _ -> do
             n_label <- global $ mangle n
             l v0 n_label
-            sw v0 i sp
+            sw v0 (4 * (stackSlot i)) sp
           AConst i    -> do
             l v0 i
-            sw v0 i sp
-    codegenExpression' (ELet bs e) c                      = do
+            sw v0 (4 * (stackSlot i)) sp
+    codegenExpression' (EApplication (ALocal f) []) c sSize     = do
+      case fromJust $ Map.lookup f c of
+       Physical r -> do
+         l rt r
+       Stack s    -> do
+         lw rt s sp
+      add sp sp (4 * sSize)
+      j =<< global "_runtime_continue"
+    codegenExpression' (ELet bs e) c sSize                    = do
       c_labels <- fmap Map.fromList $ forM bs $ \(x, _, _) -> do
         l <- newLabel
         return (x, l)
       let nVars                        = Set.fromList $ fmap (\(x, _, _) -> x) bs
           (heapSize, heapOffsets, fvs) = foldr
                                          (\(x, vs, e) (i, os, acc) ->
-                                           let fvs = Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList vs in
+                                           let fvs = Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList (x : vs) in
                                            foldr
                                            (\v (i, os, acc) ->
                                              (i+4, os, Map.insertWith (++) v [i] acc)
@@ -98,21 +115,150 @@ codegenExpression e =
           sw r o v0
 
       -- Add closure headers
-      forM_ c_labels $ \(x, lbl) -> do
+      forM_ (Map.toList c_labels) $ \(x, lbl) -> do
         l  v1 lbl
         sw v1 (fromJust $ Map.lookup x heapOffsets) v0
+
+      -- put the new variables in memory
+
+      forM_ (Map.toList heapOffsets) $ \(x, o) -> do
+        case fromJust $ Map.lookup x c of
+         Physical r -> do
+           l   r v0
+           add r r o
+         Stack s -> do
+           l v1 v0
+           add v1 v1 o
+           sw v1 s sp
         
       -- then proceed with the expression
-      codegenExpression' e
+      codegenExpression' e c sSize
 
       -- Add the closure code
-      forM_ (zip bs c_labels) $ \((x, vs, e), lbl) -> do
-        label lbl
+      forM_ bs $ \(x, vs, e) -> do
+        word (length vs) -- Arity info for apply functions. 0 = THUNK = PARTIAL ?
+        label $ fromJust $ Map.lookup x c_labels
         -- rt is now a pointer to the closure
         -- arguments (vs are on the stack)
         -- => we have to move free variables
-        let (stk, c') = colorGraph (makeGraph e) 0
+        let (stk, c) = colorGraph (makeGraph e) (Map.fromList $ zip vs (Stack <$> [-1,-2..])) 0
+            c' = Map.map (\r -> case r of
+                                 Stack i | i < 0 -> Stack (stk - i - 1)
+                                 _               -> r
+                         ) c
         -- Allocate memory on the stack
+        sub sp sp stk
+        -- Move the free variables
+        let fvs = Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList vs
+        forM (zip fvs [4,8..]) $ \(v, i) -> do
+          case fromJust $ Map.lookup v c' of
+            Physical r -> do
+              lw r i rt
+            Stack j    -> do
+              lw v1 i rt
+              sw v1 j sp
+
+        -- Eval expression
+        codegenExpression' e c' (stk + length vs)
         
-        codegenExpression' e
-        
+    codegenExpression' (EDataCase a alts df) c sSize = do
+      let altsList     = Map.toList alts
+      let fvs          = Set.toList $ Set.unions
+                     $ maybe Set.empty expressionFreeVariables df
+                     : fmap (\(_, (vs, e)) -> expressionFreeVariables e `Set.difference` Set.fromList vs) altsList
+          (rfvs, sfvs) = partition (\v -> case fromJust $ Map.lookup v c of
+                                    Physical _ -> True
+                                    Stack _    -> False
+                            ) fvs
+          stackMod     = 1 + length rfvs
+          c'           = Map.union
+                         (Map.fromList $ zip rfvs (Stack <$> [1..]))
+                         (Map.fromList $ fmap (\v -> let Stack i = fromJust $ Map.lookup v c in (v, Stack $ i + stackMod)) sfvs)
+      cont_label <- newLabel
+
+      sub sp sp (4 * stackMod)
+      -- Put free variables currently in physical registers on the stack
+      forM_ (zip rfvs [4, 8..]) $ \(v, i) -> do
+        let Physical r = fromJust $ Map.lookup v c
+        sw r i sp
+      -- Add continuation on the stack
+      l v0 cont_label
+      sw v0 0 sp
+      -- Eval a
+      case a of
+        ALocal v -> case fromJust $ Map.lookup v c of
+          Physical r -> do
+            l rt r
+          Stack i    -> do
+            lw rt (i + 4) sp
+      lw v0 0 rt
+      j v0
+
+      -- Continuation
+      -- a is now in WHNF, in rt
+      label cont_label
+      alt_labels <- forM altsList (const newLabel)
+      -- tag in v0
+      lw v0 4 rt
+      -- Jump to correct case
+      forM_ (zip altsList alt_labels) $ \((tag, (_, _)), lbl) -> do
+        l v1 tag
+        beq v0 v1 lbl
+      -- Default case
+      case df of
+       Nothing -> return () -- TODO : GOTO Fail is better
+       Just e  -> codegenExpression' e c' (sSize + stackMod)
+      -- Alt cases
+      forM_ (zip altsList alt_labels) $ \((_, (vs, e)), lbl) -> do
+        let efvs = expressionFreeVariables e
+            cstk = Map.foldr (\r acc -> case r of
+                                         Physical _ -> acc
+                                         Stack i    -> max acc (i + 1)
+                             ) 0 c'
+            (stk, c) = colorGraph (makeGraph e) c' cstk
+        let c' = Map.map (\r -> case r of
+                                 Stack i | i >= cstk -> Stack (i - cstk)
+                                 Stack i            -> Stack (i + stk - cstk)
+                                 Physical r         -> Physical r
+                         ) c
+        label lbl
+        when (stk /= cstk) $ do
+          sub sp sp (stk - cstk)
+        forM_ (zip vs [8, 12..]) $ \(v, i) ->
+          when (Set.member v efvs) $
+          case fromJust $ Map.lookup v c' of
+           Physical r -> do
+             lw r i rt
+           Stack j    -> do
+             lw v0 i rt
+             sw v0 j sp
+        codegenExpression' e c' (sSize + stackMod + stk - cstk)
+
+codegenDataConstructor :: Int -> Int -> SectionMonad ()
+codegenDataConstructor tag ar = do
+  continue <- global "_runtime_continue"
+  l a0 (4 * (ar + 8))
+  l v0 (9 :: Int)
+  syscall
+  
+  l  v1 continue
+  sw v1 0 v0
+
+  l  v1 tag
+  sw v1 4 v0
+
+  forM [0..ar-1] $ \i -> do
+    lw  v1 (4 * i) sp
+    sw  v1 (8 + 4 * i) v0
+
+  add sp sp (4 * ar)
+
+  l rt v0
+
+  lw v0 0 sp
+  j  v0
+
+codegenDeclaration :: Declaration -> SectionMonad ()
+codegenDeclaration (Declaration e)                   = traceShow e $ codegenExpression e
+codegenDeclaration (PrimitiveDeclaration _)          = return ()
+codegenDeclaration (DataConstructorDeclaration t ar) = codegenDataConstructor t ar

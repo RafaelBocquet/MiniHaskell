@@ -12,7 +12,11 @@ newtype MipsRegister = MipsRegister Int
 instance Show MipsRegister where
   show (MipsRegister i) = "$" ++ show i
 
+<<<<<<< HEAD
 zero, v0, v1, sp, hp, rt, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9 :: MipsRegister
+=======
+zero, v0, v1, sp, hp, rt, a0, a1, a2, a3, t0, t1 :: MipsRegister
+>>>>>>> 6a928ca6fab542bc4018ebc72467a30331cfc935
 zero = MipsRegister 0
 
 v0   = MipsRegister 2
@@ -23,6 +27,7 @@ a1   = MipsRegister 5
 a2   = MipsRegister 6
 a3   = MipsRegister 7
 
+<<<<<<< HEAD
 t0   = MipsRegister 8
 t1   = MipsRegister 9
 t2   = MipsRegister 10
@@ -43,6 +48,10 @@ s7   = MipsRegister 23
 
 t8   = MipsRegister 24
 t9   = MipsRegister 25
+=======
+t0   = MipsRegister 11
+t1   = MipsRegister 11
+>>>>>>> 6a928ca6fab542bc4018ebc72467a30331cfc935
 
 sp   = MipsRegister 29
 hp   = MipsRegister 30
@@ -106,8 +115,6 @@ data MipsInstruction = Label Address
 
                      | J MipsOperand
                      | Beq MipsRegister MipsRegister Address
-                     | Bltz MipsRegister Address
-                     | Bgtz MipsRegister Address
 
                      | Syscall
 
@@ -133,14 +140,10 @@ instance Show MipsInstruction where
   show (J (OConst _))             = error "show mips instruction"
   show (J (OAddress a))           = "\tj " ++ show a ++ "\n"
 
-  show (Beq r r' a)               = "\tbeq " ++ show r ++ ", " ++ show r' ++ ", " ++ show a ++ "\n"
-  show (Bltz r a)                 = "\tbltz " ++ show r ++ ", " ++ show a ++ "\n"
-  show (Bgtz r a)                 = "\tbgtz " ++ show r ++ ", " ++ show a ++ "\n"
-
   show Syscall                    = "\tsyscall\n"
 
-data MipsInstructions = NOP
-                      | Instruction MipsInstruction
+data MipsInstructions = Instruction MipsInstruction
+                      | NOP
                       | Instructions MipsInstructions MipsInstructions
 
 instance Monoid MipsInstructions where
@@ -226,12 +229,6 @@ j a = tell . Instruction $ J (toOperand a)
 
 beq :: MipsRegister -> MipsRegister -> Address -> SectionMonad ()
 beq a b c = tell . Instruction $ Beq a b c
-
-bltz :: MipsRegister -> Address -> SectionMonad ()
-bltz a b = tell . Instruction $ Bltz a b
-
-bgtz :: MipsRegister -> Address -> SectionMonad ()
-bgtz a b = tell . Instruction $ Bgtz a b
 
 syscall :: SectionMonad ()
 syscall = (tell . Instruction) Syscall

@@ -2,7 +2,13 @@ module Backend.Runtime where
 
 import Prelude hiding (error, putChar)
 
+import Control.Applicative
+import Control.Monad
+
 import Backend.Mips
+
+maxSingleApplication :: Int
+maxSingleApplication = 4
 
 -- putCharU :: MipsMonad ()
 -- putCharU = do
@@ -80,14 +86,6 @@ import Backend.Mips
 --   l   rt callError
 --   j   error_Entry
 
--- nop :: MipsMonad ()
--- nop = do
---   nop_Closure <- global "nop_Closure"
-
---   label nop_Closure
---   lw  t0 0 sp
---   j   t0
-
 -- aChar :: MipsMonad ()
 -- aChar = do
 --   aChar_Data <- global "aChar_Data"
@@ -107,12 +105,121 @@ import Backend.Mips
 --   word error_Entry
 --   word aChar_Data
 
--- textRuntime = do
---   test_Main
---   putCharU
---   putChar
---   error
---   nop
--- dataRuntime = do
---   aChar
---   callError
+continue :: SectionMonad ()
+continue = do
+  continue <- global "_runtime_continue"
+  label continue
+  lw  v0 0 sp
+  add sp sp (4 :: Int)
+  j   v0
+
+-- Print rt, then exit
+
+exit :: SectionMonad ()
+exit = do
+  exit <- global "_runtime_exit"
+  label exit
+  l  v0 (1 :: Int)
+  l  a0 rt
+  syscall
+  l  v0 (10 :: Int)
+  syscall
+
+start :: SectionMonad ()
+start = do
+  start <- global "_runtime_start"
+  continue <- global "_runtime_continue"
+  exit <- global "_runtime_exit"
+  idl <- global "_closure_Base_id37"
+  apl <- global "_runtime_apply_continuation_1"
+  label start
+  
+  sub sp sp (12 :: Int)
+  l v0 exit
+  sw v0 8 sp
+  l v0 (42 :: Int)
+  sw v0 4 sp
+  l v0 apl
+  sw v0 0 sp
+
+  l rt idl
+
+  -- Last continuation is exit
+
+  j continue
+
+-- Function is in rt
+-- Arguments on the stack
+-- Function is in WHNF
+apply_continuation :: Int -> SectionMonad ()
+apply_continuation n = do
+  apply_continuation <- global ("_runtime_apply_continuation_" ++ show n)
+  apply_continuation_array <- global "_runtime_apply_continuation_array"
+  pap_label          <- newLabel
+  over_label         <- newLabel
+  over_label_2       <- newLabel
+  over_label_3       <- newLabel
+  under_label        <- newLabel
+  label apply_continuation
+
+  lw v0 0 rt
+  lw v1 (-4) v0
+
+  -- Test if PAP (arity -1)
+  bltz v1 pap_label
+  -- Not PAP, arity = v1, needed arity = n
+  sub a0 v1 n
+  bltz a0 over_label
+  bgtz a0 under_label
+  -- Application with the right argument count
+  j v0
+  
+  label over_label -- Too many arguments
+  -- First eval with v1 args (v1 < n)
+  sub sp sp (4 :: Int)
+  l a1 (0 :: Int)
+  forM_ [0..n-2] $ \_ -> do
+    beq a1 v1 over_label_3
+    lw a2 4 sp
+    sw a2 0 sp
+    add a1 a1 (1 :: Int)
+    add sp sp (4 :: Int)
+  label over_label_3
+  -- Setup continuation (apply (n - v1))
+  l a1 apply_continuation_array
+  sub a1 a1 a0
+  sub a1 a1 a0
+  sub a1 a1 a0
+  sub a1 a1 a0
+  lw a1 0 a1
+  sw a1 0 sp
+  sub sp sp v1
+  sub sp sp v1
+  sub sp sp v1
+  sub sp sp v1
+  -- Call f
+  j v0
+
+  l v0 (-1 :: Int) -- Fail
+  syscall 
+  
+  label under_label -- Not enough arguments
+  l v0 (-1 :: Int) -- Fail
+  syscall
+  
+  -- PAP : ENTRY | CURRENT ARITY | TOTAL ARITY | FUNCTION | CURRENT ARGUMENTS
+  label pap_label
+  l v0 (-1 :: Int) -- Fail
+  syscall
+  
+runtime :: MipsMonad ()
+runtime = do
+  textSection $ do
+    continue
+    exit
+    start
+    forM_ [0..maxSingleApplication] apply_continuation
+  dataSection $ do
+    label =<< global "_runtime_apply_continuation_array"
+    forM_ [0..maxSingleApplication] $ \i ->
+      word =<< global ("_runtime_apply_continuation_" ++ show i)

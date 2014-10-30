@@ -6,6 +6,11 @@ import Syntax.Name
 import qualified Core.Module as C
 
 import qualified Reg.Expression as Reg
+import Backend.Mips
+import Backend.Codegen
+import Backend.Mangle
+
+import Backend.Runtime (runtime)
 
 import Desugar.Rename
 import Desugar.Typecheck
@@ -17,7 +22,7 @@ import Control.Monad.State
 
 import Data.Maybe
 import Data.Monoid
-import Data.Foldable
+import Data.Foldable (foldrM, foldlM)
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -77,5 +82,22 @@ typecheck moduleMap = do
             then error "Module cycle"
             else topologicalSort (Set.delete elem $ st `Set.difference` elemDep) (elem : topologicalSort (st `Set.intersection` elemDep) acc)
 
-compile :: Map ModuleName C.Module -> State Int (Map QCoreName Reg.Declaration)
-compile mods = Reg.regModules (Map.elems mods)
+compile :: Map ModuleName C.Module -> State Int Mips
+compile mods = do
+  rg <- Reg.regModules (Map.elems mods)
+  return $ runMips $ do
+    textSection $ do
+      start <- global "_runtime_start"
+      j start
+    runtime
+    forM_ (Map.toList rg) $ \(name, decl) -> textSection $ do
+      g_label <- global $ mangle name
+      word (0 :: Int)
+      label g_label
+      codegenDeclaration decl
+    forM_ (Map.toList rg) $ \(name, _) -> dataSection $ do
+      closure_g_label <- global $ "_closure_" ++ mangle name
+      g_label <- global $ mangle name
+      label closure_g_label
+      word g_label
+    

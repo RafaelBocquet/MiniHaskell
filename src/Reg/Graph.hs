@@ -26,7 +26,7 @@ type Graph = Map CoreName (Set CoreName)
 
 data Register = Physical MipsRegister
               | Stack Int
-              deriving (Eq, Ord)
+              deriving (Eq, Ord, Show)
 
 availableRegisters :: Set Register
 availableRegisters = Set.fromList $ Physical <$> [t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9]
@@ -53,32 +53,38 @@ makeGraph e = makeGraph' e (Map.fromList $ fmap (\v -> (v, Set.empty)) (Set.toLi
 
     addEdges g vs = foldr (\(a, b) g -> addEdge g a b) g (zip vs vs)
 
-colorGraph :: Graph -> Int -> (Int, Map CoreName Register)
-colorGraph g i | Map.null g = (i, Map.empty)
-colorGraph g i =
-    let dgs = Map.map Set.size g in
-    let (lk, hk) = Map.partition (<= Set.size availableRegisters) dgs in
-    let ls  = Map.keysSet lk
-        hs  = Map.keysSet hk
-    in
-    let c = if Set.null hs
-            then
-              Map.empty
-            else
-              let (b, hs') = Set.deleteFindMin hs in
-              let g' = Map.map (Set.filter (flip Set.member hs')) . Map.filterWithKey (\k _ -> Set.member k hs') $ g in
-              let (i', c') = colorGraph g' (i+1) in
-              Map.insert b (Stack i) $ c'
-    in (i
-       , Set.fold
-         (\n c -> Map.insert
-                  n
-                  (Set.findMin $ Set.difference
-                   availableRegisters
-                   (Set.fromList $ fmap fromJust . filter isJust $ flip Map.lookup c <$> (Set.toList $ fromJust $ Map.lookup n g))
-                  )
-                  c
-         )
-         c
-         ls
-       )
+type Coloring = Map CoreName Register
+
+colorGraph :: Graph -> Coloring -> Int -> (Int, Coloring)
+colorGraph g pc i =
+  let pck = Map.keysSet pc
+      g' = Map.map (Set.filter (not . flip Set.member pck)) . Map.filterWithKey (\k _ -> not $ Set.member k pck) $ g
+  in colorGraph' g' i
+  where
+    colorGraph' g i =
+      let dgs = Map.map Set.size g in
+      let (lk, hk) = Map.partition (<= Set.size availableRegisters) dgs in
+      let ls  = Map.keysSet lk
+          hs  = Map.keysSet hk
+      in
+      let (i', c) = if Set.null hs
+              then
+                (i, pc)
+              else
+                let (b, hs') = Set.deleteFindMin hs
+                    g'       = Map.map (Set.filter (flip Set.member hs')) . Map.filterWithKey (\k _ -> Set.member k hs') $ g
+                    (i', c') = colorGraph' g' (i+1)
+                in (i', Map.insert b (Stack i) $ c')
+       in ( i'
+          , Set.fold
+            (\n c -> Map.insert
+                     n
+                     (Set.findMin $ Set.difference
+                      availableRegisters
+                      (Set.fromList $ fmap fromJust . filter isJust $ flip Map.lookup c <$> (Set.toList $ fromJust $ Map.lookup n g))
+                     )
+                     c
+            )
+            c
+            ls
+          )

@@ -262,10 +262,6 @@ typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> 
       tau     <- generateName
       eTy     <- localBind x (PolyType Set.empty (TyVariable tau)) $ typecheckExpression e
       return $ C.Expression (makeTypeApplication TyArrow [TyVariable tau, C.expressionType eTy]) (C.ELambda x eTy)
-    -- typecheckExpression' (ETuple es)                                  = do
-    --   ts <- mapM typecheckExpression es
-    --   tyTuple <- TyConstant <$> getPrimitive TypeConstructorName (replicate (length es - 1) ',')
-    --   return $ C.Expression (makeTypeApplication tyTuple (C.expressionType <$> ts)) (C.ETuple ts)
     typecheckExpression' (ELet bs e)                                  = do
       bts <- typecheckBindings [] bs
       eTy <- localBindMany (Map.map fst bts) $ typecheckExpression e
@@ -279,10 +275,6 @@ typecheckDeclaration (Declaration (Just t) e) = do
   e' <- typecheckExpression e
   liftUnify $ unifyType t (C.expressionType e')
   return $ C.Declaration e'
---typecheckDeclaration (Declaration (Just t) e)    = do
---  e' <- typecheckExpression e
---  liftUnify $ unifyType (C.expressionType e') 
--- TODO : assert the type of e is more general than t
 typecheckDeclaration (PrimitiveDeclaration prim) = return $ C.PrimitiveDeclaration prim
 
 primitiveType :: PrimitiveDeclaration -> TypecheckMonad (MonoType CoreName)

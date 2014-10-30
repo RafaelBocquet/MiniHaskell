@@ -88,10 +88,25 @@ typecheckOnlyFull fn = do
     f (Right rs) (Left e)  = Left e
     f (Right rs) (Right r) = Right $ r : rs
 
+compileFull' :: [[Full.Token']] -> IO ()
+compileFull' strs = do
+  flip evalState 0 $ do
+    ps <- (Full.runParse . Full.parseModule) `mapM` strs
+    case foldr (flip f) (Right []) ps of
+      Left e -> return (putStrLn.show $ e)
+      Right ps -> do
+        r <- typecheck (makeModuleMap $ primitiveModule : ps)
+        r' <- compile r
+        return $ putStrLn.show $ r'
+  where
+    f (Left e) _           = Left e
+    f (Right rs) (Left e)  = Left e
+    f (Right rs) (Right r) = Right $ r : rs
+
 compileFull :: [String] -> IO ()
 compileFull fn = do
-  putStrLn $ show fn ++ " : "
-  putStr "\t"
+  -- putStrLn $ show fn ++ " : "
+  -- putStr "\t"
   strs <- readFile `mapM` fn
   flip evalState 0 $ do
     ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs

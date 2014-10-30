@@ -64,7 +64,7 @@ runRenameMonad :: RenameMap -> RenameMonad a -> State Int (Either RenameError a)
 runRenameMonad env = flip runReaderT env . runExceptT
 
 renameMany :: (forall c. RenamingIn a b c) -> RenamingIn [a] [b] c
-renameMany f vs m = do
+renameMany f vs m =
   foldr
     (\v acc -> do
       (v', (vs, rv)) <- f v acc

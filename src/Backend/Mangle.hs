@@ -4,7 +4,7 @@ import Syntax.Name
 
 import Control.Applicative
 
-mangleMap = zip "!#$%&*+./<=>?@\\^|-~:_" ['a'..]
+mangleMap = zip "!#$%&*+./<=>?@\\^|-~:_,[]()'{}" (['a'..'z'] ++ ['A'..'Z'])
 
 mangleChar :: Char -> String
 mangleChar c = case lookup c mangleMap of

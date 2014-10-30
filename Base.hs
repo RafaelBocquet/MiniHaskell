@@ -6,32 +6,32 @@ module Base where {
 
 ; data Int = Int Int_prim
 
-; (+), (-), (*), div, rem :: Int -> Int -> Int
-; (+) (Int a) (Int b) = Int (add_prim a b)
-; (-) (Int a) (Int b) = Int (sub_prim a b)
-; (*) (Int a) (Int b) = Int (mul_prim a b)
-; div (Int a) (Int b) = Int (div_prim a b)
-; rem (Int a) (Int b) = Int (rem_prim a b)
+-- ; (+), (-), (*), div, rem :: Int -> Int -> Int
+-- ; (+) (Int a) (Int b) = Int (add_prim a b)
+-- ; (-) (Int a) (Int b) = Int (sub_prim a b)
+-- ; (*) (Int a) (Int b) = Int (mul_prim a b)
+-- ; div (Int a) (Int b) = Int (div_prim a b)
+-- ; rem (Int a) (Int b) = Int (rem_prim a b)
 
-; negate :: Int -> Int
-; negate (Int a) = Int (negate_prim a)
+-- ; negate :: Int -> Int
+-- ; negate (Int a) = Int (negate_prim a)
 
-; (<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
-; (<)  (Int a) (Int b) = intLT_prim a b
-; (<=) (Int a) (Int b)  = intLE_prim a b
-; (>)  (Int a) (Int b) = intGT_prim a b
-; (>=) (Int a) (Int b)  = intGE_prim a b
-; (==) (Int a) (Int b)  = intEQ_prim a b
-; (/=) (Int a) (Int b)  = intNE_prim a b
+-- ; (<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
+-- ; (<)  (Int a) (Int b) = intLT_prim a b
+-- ; (<=) (Int a) (Int b)  = intLE_prim a b
+-- ; (>)  (Int a) (Int b) = intGT_prim a b
+-- ; (>=) (Int a) (Int b)  = intGE_prim a b
+-- ; (==) (Int a) (Int b)  = intEQ_prim a b
+-- ; (/=) (Int a) (Int b)  = intNE_prim a b
 
-; fromInteger x = x
+-- ; fromInteger x = x
 
 -- Char
 
-; data Char = Char Char_prim
+-- ; data Char = Char Char_prim
 
-; chr (Int a) = Char (chr_prim a)
-; ord (Char a) = Int (ord_prim a)
+-- ; chr (Int a) = Char (chr_prim a)
+-- ; ord (Char a) = Int (ord_prim a)
 
 -- Type class
 --; class Eq Char where {
@@ -45,25 +45,38 @@ module Base where {
 --  ; (>=) (Char a) (Char b) = charGE_prim a b
 --; }
 
--- 
+-- Any
 ; id :: a -> a
-; id x = x
+; id x = id' (id' (id' (id' (id' x))))
 
-; (.) :: (b -> c) -> (a -> b) -> (a -> c)
-; (.) f g x = f (g x)
+; id' x = x
+
+
+-- ; (.) :: (b -> c) -> (a -> b) -> (a -> c)
+-- ; (.) f g x = f (g x)
 
 ; const :: a -> b -> a
 ; const x _ = x
 
-; not :: Bool -> Bool
-; not True  = False
-; not False = True
+-- ; undefined :: a
+-- ; undefined = error "undefined"
 
-; (&&), (||) :: Bool -> Bool -> Bool
-; (&&) True  = \x -> x
-; (&&) False = \_ -> False
+-- Bool
 
-; (||) True  = \_ -> True
-; (||) False = \x -> x
+-- ; not :: Bool -> Bool
+-- ; not True  = False
+-- ; not False = True
 
+-- ; (&&), (||) :: Bool -> Bool -> Bool
+-- ; (&&) True  = \x -> x
+-- ; (&&) False = \_ -> False
+
+-- ; (||) True  = \_ -> True
+-- ; (||) False = \x -> x
+
+-- List
+
+-- ; append :: List a -> List a -> List a
+-- ; append []       ys = ys
+-- ; append (x : xs) ys = x : append xs ys
 }
