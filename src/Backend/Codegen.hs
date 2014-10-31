@@ -35,25 +35,39 @@ codegenExpression e = do
   sub sp sp stk
   codegenExpression' e c stk
   where
+--    codegenExpression' e _ _ | traceShow e False = undefined
+    codegenExpression' (EApplication (ALocal f) []) c sSize     = do
+      case fromJust $ Map.lookup f c of
+       Physical r -> do
+         l rt r
+       Stack s    -> do
+         lw rt s sp
+      add sp sp (4 * sSize)
+      j =<< global "_runtime_apply_continuation_0"
     -- TODO : we must resize the stack accordingly
     -- Application to known functions
-    codegenExpression' (EApplication (AGlobal f ar) xs) c sSize = do
-      f_label <- global $ "_closure_" ++ mangle f
-      
+    codegenExpression' (EApplication f xs) c sSize = do
+      case f of
+       AGlobal n _ -> l rt =<< global ("_closure_" ++ mangle n)
+       ALocal v -> case fromJust $ Map.lookup v c of
+         Physical r -> do
+           l rt r
+         Stack s    -> do
+           lw rt s sp
+           
       sub sp sp (4 * nStackSize)
       forM [sSize-1, sSize-2 .. 0] $ \i -> do
         lw v0 (4 * nStackSize + i) sp
         sw v0 (4 * i) sp
-      forM (zip xs [0,4..]) $ uncurry pushArgument
-      forM [1..ar `div` maxSingleApplication] $ \i -> do
-        l v0 =<< global ("_runtime_apply_continuation_" ++ show (if i == ar `div` maxSingleApplication then ar else maxSingleApplication))
-        sw v0 (4 * i * maxSingleApplication) sp
+      forM (zip xs [0..]) $ uncurry pushArgument
       add sp sp (4 * sSize)
-
-      l rt f_label
-      j =<< global ("_runtime_apply_continuation_" ++ show (min maxSingleApplication ar))
+      forM [1..nxs `div` maxSingleApplication] $ \i -> do
+        l v0 =<< global ("_runtime_apply_continuation_" ++ show (if i == nxs `div` maxSingleApplication then nxs `mod` maxSingleApplication else maxSingleApplication))
+        sw v0 (4 * i * (maxSingleApplication + 1) - 4) sp
+      j =<< global ("_runtime_apply_continuation_" ++ show (min maxSingleApplication nxs))
       where
-        nStackSize = ar + ar `div` maxSingleApplication
+        nxs = length xs
+        nStackSize = nxs + nxs `div` maxSingleApplication
         stackSlot i = sSize + i + i `div` maxSingleApplication
         pushArgument x i = case x of
           ALocal v -> case fromJust $ Map.lookup v c of
@@ -63,20 +77,12 @@ codegenExpression e = do
               lw v0 j sp
               sw v0 (4 * (stackSlot i)) sp
           AGlobal n _ -> do
-            n_label <- global $ mangle n
+            n_label <- global $ "_closure_" ++ mangle n
             l v0 n_label
             sw v0 (4 * (stackSlot i)) sp
           AConst i    -> do
             l v0 i
             sw v0 (4 * (stackSlot i)) sp
-    codegenExpression' (EApplication (ALocal f) []) c sSize     = do
-      case fromJust $ Map.lookup f c of
-       Physical r -> do
-         l rt r
-       Stack s    -> do
-         lw rt s sp
-      add sp sp (4 * sSize)
-      j =<< global "_runtime_continue"
     codegenExpression' (ELet bs e) c sSize                    = do
       c_labels <- fmap Map.fromList $ forM bs $ \(x, _, _) -> do
         l <- newLabel
@@ -185,14 +191,14 @@ codegenExpression e = do
       l v0 cont_label
       sw v0 0 sp
       -- Eval a
+      
       case a of
         ALocal v -> case fromJust $ Map.lookup v c of
           Physical r -> do
             l rt r
           Stack i    -> do
-            lw rt (i + 4) sp
-      lw v0 0 rt
-      j v0
+            lw rt (i + 4 * stackMod) sp
+      j =<< global "_runtime_apply_continuation_0"
 
       -- Continuation
       -- a is now in WHNF, in rt
@@ -206,7 +212,9 @@ codegenExpression e = do
         beq v0 v1 lbl
       -- Default case
       case df of
-       Nothing -> return () -- TODO : GOTO Fail is better
+       Nothing -> do
+         l v0 (-1 :: Int)
+         syscall
        Just e  -> codegenExpression' e c' (sSize + stackMod)
       -- Alt cases
       forM_ (zip altsList alt_labels) $ \((_, (vs, e)), lbl) -> do
@@ -232,12 +240,12 @@ codegenExpression e = do
            Stack j    -> do
              lw v0 i rt
              sw v0 j sp
-        codegenExpression' e c' (sSize + stackMod + stk - cstk)
+        codegenExpression' e c' (sSize + stackMod + stk - cstk - 1) -- -1 because the continuation was already pop'd from the stack by _runtime_continue !
 
 codegenDataConstructor :: Int -> Int -> SectionMonad ()
 codegenDataConstructor tag ar = do
   continue <- global "_runtime_continue"
-  l a0 (4 * (ar + 8))
+  l a0 (4 * ar + 8)
   l v0 (9 :: Int)
   syscall
   
@@ -254,9 +262,7 @@ codegenDataConstructor tag ar = do
   add sp sp (4 * ar)
 
   l rt v0
-
-  lw v0 0 sp
-  j  v0
+  j =<< global "_runtime_continue"
 
 codegenDeclaration :: Declaration -> SectionMonad ()
 codegenDeclaration (Declaration e)                   = traceShow e $ codegenExpression e

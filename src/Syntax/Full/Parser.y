@@ -300,10 +300,10 @@ expression :: { Expression SyntaxName }
 expression10 :: { Expression SyntaxName }
           -- : 'if' expression 'then' expression 'else' expression { 0 }
              : '\\'  nonempty_list(apattern) '->' expression
-                { makeLambda $2 $4 }
+                  { makeLambda $2 $4 }
           -- | 'let'
              | 'case' expression 'of' '{' separated_nonempty_list(option(casealternative), ';') '}'
-                { lll $ ECase $2 (fmap fromJust $ filter isJust $ $5) }
+                  { lll $ ECase $2 (fmap fromJust $ filter isJust $ $5) }
           -- | 'do'
              | nonempty_list(aexpression) { foldl (\a b -> lll $ EApplication a b) (head $1) (tail $1) }
 

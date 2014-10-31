@@ -92,7 +92,10 @@ compile mods = do
     runtime
     forM_ (Map.toList rg) $ \(name, decl) -> textSection $ do
       g_label <- global $ mangle name
-      word (0 :: Int)
+      case decl of
+       Reg.DataConstructorDeclaration _ ar -> word ar
+       _                                   -> word (0 :: Int)
+       
       label g_label
       codegenDeclaration decl
     forM_ (Map.toList rg) $ \(name, _) -> dataSection $ do

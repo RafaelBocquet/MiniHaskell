@@ -186,6 +186,10 @@ regExpression = regExpression' . C.expressionValue
        (EApplication af xs, _)                  -> do
          at <- generateName
          return $ ELet [(at, [], t')] (EApplication af (xs ++ [ALocal at]))
+       (ELet bs (EApplication af xs), EApplication at []) -> return $ ELet bs (EApplication af (xs ++ [at]))
+       (ELet bs (EApplication af xs), _)                  -> do
+         at <- generateName
+         return $ ELet ((at, [], t') : bs) (EApplication af (xs ++ [ALocal at]))
        (_, EApplication at [])                  -> do
          af <- generateName
          return $ ELet [(af, [], f')] (EApplication (ALocal af) [at])

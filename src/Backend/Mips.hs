@@ -106,6 +106,7 @@ data MipsInstruction = Label Address
 
                      | J MipsOperand
                      | Beq MipsRegister MipsRegister Address
+                     | Bne MipsRegister MipsRegister Address
                      | Bltz MipsRegister Address
                      | Bgtz MipsRegister Address
 
@@ -134,6 +135,7 @@ instance Show MipsInstruction where
   show (J (OAddress a))           = "\tj " ++ show a ++ "\n"
 
   show (Beq r r' a)               = "\tbeq " ++ show r ++ ", " ++ show r' ++ ", " ++ show a ++ "\n"
+  show (Bne r r' a)               = "\tbne " ++ show r ++ ", " ++ show r' ++ ", " ++ show a ++ "\n"
   show (Bltz r a)                 = "\tbltz " ++ show r ++ ", " ++ show a ++ "\n"
   show (Bgtz r a)                 = "\tbgtz " ++ show r ++ ", " ++ show a ++ "\n"
 
@@ -226,6 +228,9 @@ j a = tell . Instruction $ J (toOperand a)
 
 beq :: MipsRegister -> MipsRegister -> Address -> SectionMonad ()
 beq a b c = tell . Instruction $ Beq a b c
+
+bne :: MipsRegister -> MipsRegister -> Address -> SectionMonad ()
+bne a b c = tell . Instruction $ Bne a b c
 
 bltz :: MipsRegister -> Address -> SectionMonad ()
 bltz a b = tell . Instruction $ Bltz a b

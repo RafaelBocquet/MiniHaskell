@@ -8,7 +8,7 @@ import Control.Monad
 import Backend.Mips
 
 maxSingleApplication :: Int
-maxSingleApplication = 4
+maxSingleApplication = 2
 
 -- putCharU :: MipsMonad ()
 -- putCharU = do
@@ -107,6 +107,7 @@ maxSingleApplication = 4
 
 continue :: SectionMonad ()
 continue = do
+  word (0 :: Int)
   continue <- global "_runtime_continue"
   label continue
   lw  v0 0 sp
@@ -118,9 +119,17 @@ continue = do
 exit :: SectionMonad ()
 exit = do
   exit <- global "_runtime_exit"
+  exit_continuation <- newLabel
   label exit
+  -- Eval RT :
+  sub sp sp (4 :: Int)
+  l v0 exit_continuation
+  sw v0 0 sp
+  j =<< global "_runtime_apply_continuation_0"
+  
+  label exit_continuation
   l  v0 (1 :: Int)
-  l  a0 rt
+  lw  a0 8 rt
   syscall
   l  v0 (10 :: Int)
   syscall
@@ -130,14 +139,14 @@ start = do
   start <- global "_runtime_start"
   continue <- global "_runtime_continue"
   exit <- global "_runtime_exit"
-  idl <- global "_closure_Base_id37"
+  idl <- global "_closure_Base_id45"
   apl <- global "_runtime_apply_continuation_1"
   label start
   
   sub sp sp (12 :: Int)
   l v0 exit
   sw v0 8 sp
-  l v0 (42 :: Int)
+  l v0 =<< global "_int_42"
   sw v0 4 sp
   l v0 apl
   sw v0 0 sp
@@ -147,6 +156,20 @@ start = do
   -- Last continuation is exit
 
   j continue
+
+
+apply_continuation_0 :: SectionMonad ()
+apply_continuation_0 = do
+  apply_continuation <- global "_runtime_apply_continuation_0"
+  label apply_continuation
+
+  lw v0 0 rt
+  lw v1 (-4) v0
+
+  -- Test if it is a function (already WHNF)
+  bne v1 zero =<< global "_runtime_continue"
+  -- Otherwise, eval (if it is an applied constructor in WHNF, it will call _runtime_continue)
+  j v0
 
 -- Function is in rt
 -- Arguments on the stack
@@ -199,17 +222,14 @@ apply_continuation n = do
   sub sp sp v1
   -- Call f
   j v0
-
-  l v0 (-1 :: Int) -- Fail
-  syscall 
   
   label under_label -- Not enough arguments
+  -- Make a PAP with ENTRY = FAIL, CURRENT ARITY =, TOTAL ARITY 
   l v0 (-1 :: Int) -- Fail
   syscall
-  
   -- PAP : ENTRY | CURRENT ARITY | TOTAL ARITY | FUNCTION | CURRENT ARGUMENTS
   label pap_label
-  l v0 (-1 :: Int) -- Fail
+  l v0 (-2 :: Int) -- Fail
   syscall
   
 runtime :: MipsMonad ()
@@ -218,8 +238,14 @@ runtime = do
     continue
     exit
     start
-    forM_ [0..maxSingleApplication] apply_continuation
+    apply_continuation_0
+    forM_ [1..maxSingleApplication] apply_continuation
   dataSection $ do
     label =<< global "_runtime_apply_continuation_array"
     forM_ [0..maxSingleApplication] $ \i ->
       word =<< global ("_runtime_apply_continuation_" ++ show i)
+
+    label =<< global "_int_42"
+    word =<< global "_runtime_continue"
+    word (1 :: Int)
+    word (42 :: Int)

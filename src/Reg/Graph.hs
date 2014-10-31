@@ -22,6 +22,8 @@ import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.Writer
 
+import Debug.Trace
+
 type Graph = Map CoreName (Set CoreName)
 
 data Register = Physical MipsRegister
@@ -51,7 +53,7 @@ makeGraph e = makeGraph' e (Map.fromList $ fmap (\v -> (v, Set.empty)) (Set.toLi
       $ Map.update (Just . Set.insert a) b
       $ g
 
-    addEdges g vs = foldr (\(a, b) g -> addEdge g a b) g (zip vs vs)
+    addEdges g vs = foldr (\(a, b) g -> addEdge g a b) g [(x, y) | x <- vs, y <- vs]
 
 type Coloring = Map CoreName Register
 

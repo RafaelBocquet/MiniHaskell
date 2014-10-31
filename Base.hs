@@ -45,15 +45,23 @@ module Base where {
 --  ; (>=) (Char a) (Char b) = charGE_prim a b
 --; }
 
+-- ; main :: a -> Int
+-- ; main _ = 4
+
 -- Any
 ; id :: a -> a
-; id x = id' (id' (id' (id' (id' x))))
+; id x = (id' . id' . fst) (x, x)
+
+; id'' x = id' id' x
 
 ; id' x = x
 
+; fst (x, _) = x
+; snd (_, y) = y
 
--- ; (.) :: (b -> c) -> (a -> b) -> (a -> c)
--- ; (.) f g x = f (g x)
+
+; (.) :: (b -> c) -> (a -> b) -> (a -> c)
+; (.) f g x = f (g x)
 
 ; const :: a -> b -> a
 ; const x _ = x
