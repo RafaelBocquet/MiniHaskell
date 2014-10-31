@@ -10,101 +10,6 @@ import Backend.Mips
 maxSingleApplication :: Int
 maxSingleApplication = 2
 
--- putCharU :: MipsMonad ()
--- putCharU = do
---   putCharU_Entry <- global "_putCharU_Entry"
-
---   label putCharU_Entry
-
---   l   a0 (97 :: Int)
---   l   v0 (11 :: Int)
---   syscall
---   lw  t0 0 sp
---   j   t0
-
--- putChar :: MipsMonad ()
--- putChar = do
---   putCharU_Entry <- global "_putCharU_Entry"
---   putChar_Entry <- global "_putChar_Entry"
---   putChar_0 <- global "_putChar_0"
-
---   label putChar_Entry
-
---   sub sp sp (4 :: Int) -- Add continuation to _putChar_0 on top of the stack
---   l   t0 putChar_0
---   sw  t0 0 sp
---   lw  rt 4 rt          -- Evaluate argument
---   lw  t0 0 rt
---   j   t0
-
---   label putChar_0
---   add sp sp (4 :: Int)
---   j   putCharU_Entry
-
--- error :: MipsMonad ()
--- error = do
---   error_Entry <- global "_error_Entry"
---   error_0 <- global "_error_0"
---   error_1 <- global "_error_1"
---   putChar_Entry <- global "_putChar_Entry"
-
---   label error_Entry
-
---   sub sp sp (4 :: Int) -- Add continuation to error_0 on top of the stack
---   l   t0 error_0
---   sw  t0 0 sp
---   lw  rt 4 rt          -- Evaluate argument
---   lw  t0 0 rt
---   j   t0
-
---   label error_0        -- Call putChar#, then exit
---   l   t0 error_1       -- Add continuation to error_1 on top of the stack
---   sw  t0 0 sp
---   sub hp hp (8 :: Int)
---   l   t0 putChar_Entry
---   sw  t0 0 hp
---   sw  rt 4 hp
---   l   rt hp
---   j   putChar_Entry
-
---   label error_1        -- Exit
---   add sp sp (4 :: Int)
---   l   v0 (10 :: Int)
---   syscall
-  
--- test_Main :: MipsMonad ()
--- test_Main = do
---   l   a0 (1024 :: Int)
---   l   v0 (9 :: Int)
---   syscall
---   l   hp v0
---   add hp hp (1024 :: Int)
-
---   error_Entry <- global "_error_Entry"
---   callError <- global "callError"
-
---   l   rt callError
---   j   error_Entry
-
--- aChar :: MipsMonad ()
--- aChar = do
---   aChar_Data <- global "aChar_Data"
---   nop_Closure <- global "nop_Closure"
-
---   label aChar_Data
---   word nop_Closure
---   word 'a'
-
--- callError :: MipsMonad ()
--- callError = do
---   callError <- global "callError"
---   error_Entry <- global "_error_Entry"
---   aChar_Data <- global "aChar_Data"
-
---   label callError
---   word error_Entry
---   word aChar_Data
-
 continue :: SectionMonad ()
 continue = do
   word (0 :: Int)
@@ -139,7 +44,7 @@ start = do
   start <- global "_runtime_start"
   continue <- global "_runtime_continue"
   exit <- global "_runtime_exit"
-  idl <- global "_closure_Base_id45"
+  idl <- global "_closure_Base_id48"
   apl <- global "_runtime_apply_continuation_1"
   label start
   
@@ -157,11 +62,16 @@ start = do
 
   j continue
 
+pap :: SectionMonad ()
+pap = do
+  word (-1 :: Int)
+  label =<< global "_runtime_pap"
+  l v0 (-10 :: Int)
+  syscall 
 
 apply_continuation_0 :: SectionMonad ()
 apply_continuation_0 = do
-  apply_continuation <- global "_runtime_apply_continuation_0"
-  label apply_continuation
+  label =<< global "_runtime_apply_continuation_0"
 
   lw v0 0 rt
   lw v1 (-4) v0
@@ -183,19 +93,22 @@ apply_continuation n = do
   over_label_2       <- newLabel
   over_label_3       <- newLabel
   under_label        <- newLabel
+  pap_over_label        <- newLabel
+  pap_over_label_2        <- newLabel
+  pap_under_label        <- newLabel
   label apply_continuation
 
-  lw v0 0 rt
-  lw v1 (-4) v0
+  lw a3 0 rt
+  lw v1 (-4) a3
 
   -- Test if PAP (arity -1)
   bltz v1 pap_label
   -- Not PAP, arity = v1, needed arity = n
-  sub a0 v1 n
-  bltz a0 over_label
-  bgtz a0 under_label
+  sub a2 v1 n
+  bltz a2 over_label
+  bgtz a2 under_label
   -- Application with the right argument count
-  j v0
+  j a3
   
   label over_label -- Too many arguments
   -- First eval with v1 args (v1 < n)
@@ -203,17 +116,17 @@ apply_continuation n = do
   l a1 (0 :: Int)
   forM_ [0..n-2] $ \_ -> do
     beq a1 v1 over_label_3
-    lw a2 4 sp
-    sw a2 0 sp
+    lw a0 4 sp
+    sw a0 0 sp
     add a1 a1 (1 :: Int)
     add sp sp (4 :: Int)
   label over_label_3
   -- Setup continuation (apply (n - v1))
   l a1 apply_continuation_array
-  sub a1 a1 a0
-  sub a1 a1 a0
-  sub a1 a1 a0
-  sub a1 a1 a0
+  sub a1 a1 a2
+  sub a1 a1 a2
+  sub a1 a1 a2
+  sub a1 a1 a2
   lw a1 0 a1
   sw a1 0 sp
   sub sp sp v1
@@ -221,16 +134,63 @@ apply_continuation n = do
   sub sp sp v1
   sub sp sp v1
   -- Call f
-  j v0
+  j a3
   
   label under_label -- Not enough arguments
-  -- Make a PAP with ENTRY = FAIL, CURRENT ARITY =, TOTAL ARITY 
-  l v0 (-1 :: Int) -- Fail
+  -- Make a PAP with ENTRY = FAIL, CURRENT (REMAINING) ARITY = a2, 4*NVARS = 4*n, vars
+  -- Need 4 * (3 + n) Heap memory
+  l a0 (4 * (4 + n))
+  l v0 (9 :: Int)
   syscall
-  -- PAP : ENTRY | CURRENT ARITY | TOTAL ARITY | FUNCTION | CURRENT ARGUMENTS
+  -- Memory is pointed by v0
+  l  a0 =<< global "_runtime_pap"
+  sw a0 0 v0
+  sw a2 4 v0
+  l  a0 (4 * n)
+  sw a0 8 v0
+  sw a3 12 v0
+  forM [0..n-1] $ \i -> do
+    lw a0 (4*i) sp
+    sw a0 (16+4*i) v0
+  add sp sp (4 * n)
+  l rt v0
+  j =<< global "_runtime_continue"
+  
+  -- PAP : ENTRY | CURRENT ARITY | 4*NVARS | FUNCTION | CURRENT ARGUMENTS
+  -- n args on stack
+  -- cases :
+  --  * n = CUR ARITY
+  --  * n < CUR ARITY
+  --  * n > CUR ARITY
   label pap_label
-  l v0 (-2 :: Int) -- Fail
+  lw   v1 4 rt
+  sub  a2 v1 n
+  bgtz a2 pap_under_label
+
+  -- -- Either : Exact case : increment stack with all remaining arguments, and call f
+  -- --          Over case  : idem, then call apply_continuation with less args
+  lw  a0 8  rt
+  add v0 rt (16 :: Int)
+  add v0 v0 a0
+  
+  label pap_over_label
+  beq a0 zero pap_over_label_2
+  sub a0 a0 (4 :: Int)
+  sub sp sp (4 :: Int)
+  sub v0 v0 (4 :: Int)
+  lw  a1 0 v0
+  sw  a1 0 sp
+  j   pap_over_label
+  label pap_over_label_2
+
+  -- -- Call the function
+  lw a0 12 rt
+  j a0
+
+  label pap_under_label
+  l v0 (-11 :: Int)
   syscall
+
   
 runtime :: MipsMonad ()
 runtime = do
@@ -238,6 +198,7 @@ runtime = do
     continue
     exit
     start
+    pap
     apply_continuation_0
     forM_ [1..maxSingleApplication] apply_continuation
   dataSection $ do

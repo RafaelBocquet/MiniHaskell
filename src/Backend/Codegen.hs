@@ -41,7 +41,7 @@ codegenExpression e = do
        Physical r -> do
          l rt r
        Stack s    -> do
-         lw rt s sp
+         lw rt (4 * s) sp
       add sp sp (4 * sSize)
       j =<< global "_runtime_apply_continuation_0"
     -- TODO : we must resize the stack accordingly
@@ -53,11 +53,11 @@ codegenExpression e = do
          Physical r -> do
            l rt r
          Stack s    -> do
-           lw rt s sp
+           lw rt (4 * s) sp
            
       sub sp sp (4 * nStackSize)
       forM [sSize-1, sSize-2 .. 0] $ \i -> do
-        lw v0 (4 * nStackSize + i) sp
+        lw v0 (4 * nStackSize + 4 * i) sp
         sw v0 (4 * i) sp
       forM (zip xs [0..]) $ uncurry pushArgument
       add sp sp (4 * sSize)
@@ -74,7 +74,7 @@ codegenExpression e = do
             Physical r ->
               sw r (4 * (stackSlot i)) sp
             Stack j    -> do
-              lw v0 j sp
+              lw v0 (4 * j) sp
               sw v0 (4 * (stackSlot i)) sp
           AGlobal n _ -> do
             n_label <- global $ "_closure_" ++ mangle n
@@ -115,7 +115,7 @@ codegenExpression e = do
              Physical r ->
                return r
              Stack i    -> do
-               lw v1 i sp
+               lw v1 (4 * i) sp
                return v1
         forM_ os $ \o -> do
           sw r o v0
@@ -135,7 +135,7 @@ codegenExpression e = do
          Stack s -> do
            l v1 v0
            add v1 v1 o
-           sw v1 s sp
+           sw v1 (4 * s) sp
         
       -- then proceed with the expression
       codegenExpression' e c sSize
@@ -155,14 +155,15 @@ codegenExpression e = do
         -- Allocate memory on the stack
         sub sp sp stk
         -- Move the free variables
-        let fvs = Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList vs
+        -- The reverse is an ugly hack...
+        let fvs = reverse $ Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList vs
         forM (zip fvs [4,8..]) $ \(v, i) -> do
           case fromJust $ Map.lookup v c' of
             Physical r -> do
               lw r i rt
             Stack j    -> do
               lw v1 i rt
-              sw v1 j sp
+              sw v1 (4 * j) sp
 
         -- Eval expression
         codegenExpression' e c' (stk + length vs)
@@ -197,7 +198,7 @@ codegenExpression e = do
           Physical r -> do
             l rt r
           Stack i    -> do
-            lw rt (i + 4 * stackMod) sp
+            lw rt (4 * i + 4 * stackMod) sp
       j =<< global "_runtime_apply_continuation_0"
 
       -- Continuation
@@ -223,12 +224,13 @@ codegenExpression e = do
                                          Physical _ -> acc
                                          Stack i    -> max acc (i + 1)
                              ) 0 c'
-            (stk, c) = colorGraph (makeGraph e) c' cstk
+            (stk, c) = colorGraph (addGraphEdges (makeGraph e) vs) c' cstk
         let c' = Map.map (\r -> case r of
                                  Stack i | i >= cstk -> Stack (i - cstk)
                                  Stack i            -> Stack (i + stk - cstk)
                                  Physical r         -> Physical r
                          ) c
+        traceShow c' $ return ()
         label lbl
         when (stk /= cstk) $ do
           sub sp sp (stk - cstk)
@@ -239,7 +241,7 @@ codegenExpression e = do
              lw r i rt
            Stack j    -> do
              lw v0 i rt
-             sw v0 j sp
+             sw v0 (4 * j) sp
         codegenExpression' e c' (sSize + stackMod + stk - cstk - 1) -- -1 because the continuation was already pop'd from the stack by _runtime_continue !
 
 codegenDataConstructor :: Int -> Int -> SectionMonad ()

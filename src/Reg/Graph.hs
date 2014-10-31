@@ -34,27 +34,28 @@ availableRegisters :: Set Register
 availableRegisters = Set.fromList $ Physical <$> [t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9]
 
 makeGraph :: Expression -> Graph
-makeGraph e = makeGraph' e (Map.fromList $ fmap (\v -> (v, Set.empty)) (Set.toList $ expressionVariables e))
+makeGraph e = let g = Map.fromList $ fmap (\v -> (v, Set.empty)) (Set.toList $ expressionVariables e)
+              in addGraphEdges g (Set.toList $ expressionVariables e)
+  -- where
+  --   makeGraph' e@(EApplication _ _) g    =
+  --     let vs = Set.toList $ expressionFreeVariables e in
+  --     addGraphEdges g vs
+  --   makeGraph' (ELet bs e) g             =
+  --     let vs = Set.toList $ Set.unions (fmap (\(_, _, e) -> expressionFreeVariables e) bs) in
+  --     makeGraph' e
+  --     $ addGraphEdges g vs
+  --   makeGraph' e@(EDataCase a alts df) g =
+  --     let vs = Set.toList $ expressionFreeVariables e in
+  --     addGraphEdges g vs
+
+
+
+addGraphEdges g vs = foldr (\(a, b) g -> addEdge g a b) g [(x, y) | x <- vs, y <- vs]
   where
-    makeGraph' e@(EApplication _ _) g    =
-      let vs = Set.toList $ expressionFreeVariables e in
-      addEdges g vs
-    makeGraph' (ELet bs e) g             =
-      let vs = Set.toList $ Set.unions (fmap (\(_, _, e) -> expressionFreeVariables e) bs) in
-      makeGraph' e
-      $ addEdges g vs
-    makeGraph' e@(EDataCase a alts df) g =
-      let vs = Set.toList $ expressionFreeVariables e in
-      addEdges g vs
-
     addEdge g a b | a == b = g
-    addEdge g a b | a /= b =
-      Map.update (Just . Set.insert b) a
-      $ Map.update (Just . Set.insert a) b
-      $ g
-
-    addEdges g vs = foldr (\(a, b) g -> addEdge g a b) g [(x, y) | x <- vs, y <- vs]
-
+    addEdge g a b | a /= b = Map.update (Just . Set.insert b) a
+                             $ Map.update (Just . Set.insert a) b
+                             $ g
 type Coloring = Map CoreName Register
 
 colorGraph :: Graph -> Coloring -> Int -> (Int, Coloring)

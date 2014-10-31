@@ -50,7 +50,7 @@ module Base where {
 
 -- Any
 ; id :: a -> a
-; id x = (id' . id' . fst) (x, x)
+; id x = (id' . fst . id' . (id' . id')) (x, x)
 
 ; id'' x = id' id' x
 
@@ -65,6 +65,9 @@ module Base where {
 
 ; const :: a -> b -> a
 ; const x _ = x
+
+; ap :: (a -> b) -> a -> b
+; ap f x = f x
 
 -- ; undefined :: a
 -- ; undefined = error "undefined"

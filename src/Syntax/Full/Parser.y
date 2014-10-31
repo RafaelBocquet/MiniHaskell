@@ -308,8 +308,8 @@ expression10 :: { Expression SyntaxName }
              | nonempty_list(aexpression) { foldl (\a b -> lll $ EApplication a b) (head $1) (tail $1) }
 
 aexpression :: { Expression SyntaxName }
-            : qvarId                                                        { lll $ EVariable $1 }
-            | qconId                                                        { lll $ EVariable $1 }
+            : qsvarId                                                       { lll $ EVariable $1 }
+            | qsconId                                                       { lll $ EVariable $1 }
             | integer                                                       { lll $ EInteger (integerValue $1) }
             | char                                                          { lll $ EChar (charValue $1) }
             | string
