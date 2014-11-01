@@ -124,7 +124,7 @@ compileFull fn = do
 main :: IO ()
 main = do
   (flags, filenames) <- partition isFlag <$> getArgs
-  case ("--parse-only" `elem` flags, "--typecheck-only" `elem` flags, "--full" `elem` flags) of
+  case ("--parse-only" `elem` flags, "--type-only" `elem` flags, "--full" `elem` flags) of
     (True, False, False)   -> parseOnlySmall (head filenames)
     (False, True, False)   -> typecheckOnlySmall filenames
     -- (True, False, True) -> forM_ filenames parseOnlyFull

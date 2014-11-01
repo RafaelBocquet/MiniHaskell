@@ -94,6 +94,7 @@ compile mods = do
       g_label <- global $ mangle name
       case decl of
        Reg.DataConstructorDeclaration _ ar -> word ar
+       Reg.PrimitiveDeclaration p          -> word (2 :: Int)
        _                                   -> word (0 :: Int)
        
       label g_label

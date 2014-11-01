@@ -281,32 +281,34 @@ primitiveType :: PrimitiveDeclaration -> TypecheckMonad (MonoType CoreName)
 primitiveType p 
   | p `elem` [ PrimitiveIntAdd, PrimitiveIntSub, PrimitiveIntMul, PrimitiveIntDiv, PrimitiveIntRem ]
       = do
-    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
-    return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyInt]]
+    tyIntP  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyInt  <- TyConstant <$> getBase TypeConstructorName "Int"
+    return $ makeTypeApplication TyArrow [tyIntP, makeTypeApplication TyArrow [tyIntP, tyInt]]
   | p `elem` [ PrimitiveIntNegate ]
                 = do
-    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyIntP  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyInt  <- TyConstant <$> getBase TypeConstructorName "Int"
     return $ makeTypeApplication TyArrow [tyInt, tyInt]
   | p `elem` [ PrimitiveIntLT, PrimitiveIntLE, PrimitiveIntGT, PrimitiveIntGE, PrimitiveIntEQ, PrimitiveIntNE ]
                 = do
-    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyIntP  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
     tyBool <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
-    return $ makeTypeApplication TyArrow [tyInt, makeTypeApplication TyArrow [tyInt, tyBool]]
+    return $ makeTypeApplication TyArrow [tyIntP, makeTypeApplication TyArrow [tyIntP, tyBool]]
   | p `elem` [ PrimitiveOrd ]
                 = do
-    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
-    tyChar <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
-    return $ makeTypeApplication TyArrow [tyChar, tyInt]
+    tyInt  <- TyConstant <$> getBase TypeConstructorName "Int"
+    tyCharP <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
+    return $ makeTypeApplication TyArrow [tyCharP, tyInt]
   | p `elem` [ PrimitiveChr ]
                 = do
-    tyInt  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
-    tyChar <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
-    return $ makeTypeApplication TyArrow [tyInt, tyChar]
+    tyIntP  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
+    tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
+    return $ makeTypeApplication TyArrow [tyIntP, tyChar]
   | p `elem` [ PrimitiveCharLT, PrimitiveCharLE, PrimitiveCharGT, PrimitiveCharGE, PrimitiveCharEQ, PrimitiveCharNE ]
                 = do
-    tyChar <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
+    tyCharP <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
     tyBool <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
-    return $ makeTypeApplication TyArrow [tyChar, makeTypeApplication TyArrow [tyChar, tyBool]]
+    return $ makeTypeApplication TyArrow [tyCharP, makeTypeApplication TyArrow [tyCharP, tyBool]]
   | p `elem` [ PrimitiveBind ]
                 = do
     tyIO   <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"

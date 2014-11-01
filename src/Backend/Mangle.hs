@@ -15,4 +15,4 @@ mangleSingle :: String -> String
 mangleSingle = concat . fmap mangleChar
 
 mangle :: QCoreName -> String
-mangle (QName md _ (CoreName i n)) = (concat $ (++ "_") . mangleSingle <$> md) ++ mangleSingle n ++ show i
+mangle (QName md _ (CoreName i n)) = (concat $ (++ "_") . mangleSingle <$> md) ++ mangleSingle n -- ++ show i

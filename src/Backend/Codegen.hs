@@ -9,6 +9,8 @@ import Backend.Mips
 import Backend.Mangle
 import Backend.Runtime
 
+import Backend.Primitive
+
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -56,7 +58,7 @@ codegenExpression e = do
            lw rt (4 * s) sp
            
       sub sp sp (4 * nStackSize)
-      forM [sSize-1, sSize-2 .. 0] $ \i -> do
+      forM [0 .. sSize - 1] $ \i -> do
         lw v0 (4 * nStackSize + 4 * i) sp
         sw v0 (4 * i) sp
       forM (zip xs [0..]) $ uncurry pushArgument
@@ -66,9 +68,9 @@ codegenExpression e = do
         sw v0 (4 * i * (maxSingleApplication + 1) - 4) sp
       j =<< global ("_runtime_apply_continuation_" ++ show (min maxSingleApplication nxs))
       where
-        nxs = length xs
-        nStackSize = nxs + nxs `div` maxSingleApplication
-        stackSlot i = sSize + i + i `div` maxSingleApplication
+        nxs              = length xs
+        nStackSize       = nxs + nxs `div` maxSingleApplication
+        stackSlot i      = sSize + i + i `div` maxSingleApplication
         pushArgument x i = case x of
           ALocal v -> case fromJust $ Map.lookup v c of
             Physical r ->
@@ -179,8 +181,8 @@ codegenExpression e = do
                             ) fvs
           stackMod     = 1 + length rfvs
           c'           = Map.union
-                         (Map.fromList $ zip rfvs (Stack <$> [1..]))
-                         (Map.fromList $ fmap (\v -> let Stack i = fromJust $ Map.lookup v c in (v, Stack $ i + stackMod)) sfvs)
+                         (Map.fromList $ zip rfvs (Stack <$> [0..]))
+                         (Map.fromList $ fmap (\v -> let Stack i = fromJust $ Map.lookup v c in (v, Stack $ i + stackMod - 1)) sfvs)
       cont_label <- newLabel
 
       sub sp sp (4 * stackMod)
@@ -198,7 +200,7 @@ codegenExpression e = do
           Physical r -> do
             l rt r
           Stack i    -> do
-            lw rt (4 * i + 4 * stackMod) sp
+            lw rt (4 * i + 4 * stackMod + 4) sp
       j =<< global "_runtime_apply_continuation_0"
 
       -- Continuation
@@ -268,5 +270,5 @@ codegenDataConstructor tag ar = do
 
 codegenDeclaration :: Declaration -> SectionMonad ()
 codegenDeclaration (Declaration e)                   = traceShow e $ codegenExpression e
-codegenDeclaration (PrimitiveDeclaration _)          = return ()
+codegenDeclaration (PrimitiveDeclaration p)          = codegenPrimitive p
 codegenDeclaration (DataConstructorDeclaration t ar) = codegenDataConstructor t ar

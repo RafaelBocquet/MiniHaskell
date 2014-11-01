@@ -8,7 +8,7 @@ import Control.Monad
 import Backend.Mips
 
 maxSingleApplication :: Int
-maxSingleApplication = 2
+maxSingleApplication = 3
 
 continue :: SectionMonad ()
 continue = do
@@ -44,7 +44,7 @@ start = do
   start <- global "_runtime_start"
   continue <- global "_runtime_continue"
   exit <- global "_runtime_exit"
-  idl <- global "_closure_Base_id48"
+  idl <- global "_closure_Base_id"
   apl <- global "_runtime_apply_continuation_1"
   label start
   

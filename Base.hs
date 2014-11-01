@@ -7,7 +7,7 @@ module Base where {
 ; data Int = Int Int_prim
 
 -- ; (+), (-), (*), div, rem :: Int -> Int -> Int
--- ; (+) (Int a) (Int b) = Int (add_prim a b)
+; (+) (Int a) (Int b) = add_prim a b
 -- ; (-) (Int a) (Int b) = Int (sub_prim a b)
 -- ; (*) (Int a) (Int b) = Int (mul_prim a b)
 -- ; div (Int a) (Int b) = Int (div_prim a b)
@@ -24,7 +24,16 @@ module Base where {
 -- ; (==) (Int a) (Int b)  = intEQ_prim a b
 -- ; (/=) (Int a) (Int b)  = intNE_prim a b
 
+-- ; fromInteger :: Int_prim -> Int
 -- ; fromInteger x = x
+
+-- ; error x = error x
+
+-- ; (>>=) :: IO a -> (a -> IO b) -> IO b
+-- ; (>>=) a b = error a
+
+-- ; putChar :: Char -> IO Char
+-- ; putChar c = error c
 
 -- Char
 
@@ -45,29 +54,26 @@ module Base where {
 --  ; (>=) (Char a) (Char b) = charGE_prim a b
 --; }
 
--- ; main :: a -> Int
--- ; main _ = 4
-
 -- Any
-; id :: a -> a
-; id x = (id' . fst . id' . (id' . id')) (x, x)
+; id :: Int -> Int
+; id x = x + x + x + x
 
-; id'' x = id' id' x
+-- ; id'' x = id' id' x
 
-; id' x = x
+-- ; id' x = x
 
-; fst (x, _) = x
-; snd (_, y) = y
+-- ; fst (x, _) = x
+-- ; snd (_, y) = y
 
 
-; (.) :: (b -> c) -> (a -> b) -> (a -> c)
-; (.) f g x = f (g x)
+-- ; (.) :: (b -> c) -> (a -> b) -> (a -> c)
+-- ; (.) f g x = f (g x)
 
-; const :: a -> b -> a
-; const x _ = x
+-- ; const :: a -> b -> a
+-- ; const x _ = x
 
-; ap :: (a -> b) -> a -> b
-; ap f x = f x
+-- ; ap :: (a -> b) -> a -> b
+-- ; ap f x = f x
 
 -- ; undefined :: a
 -- ; undefined = error "undefined"

@@ -23,6 +23,8 @@ import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.Writer
 
+import Debug.Trace
+
 data Expression = EApplication Atom [Atom]
                 | ELet [(CoreName, [CoreName], Expression)] Expression
                 | EDataCase Atom (Map Int ([CoreName], Expression)) (Maybe Expression)
@@ -153,7 +155,7 @@ regModule :: C.Module -> RegMonad (Map QCoreName Declaration)
 regModule (C.Module md dds ds) = do
   ds' <- fmap Map.fromList $ forM (Map.toList ds) $ \(n, (_, e)) -> case e of
     C.Declaration e             -> do
-      e' <- regExpression e
+      e' <- simplReg Map.empty <$> regExpression e
       return (QName md VariableName n, Declaration e')
     C.PrimitiveDeclaration prim -> return (QName md VariableName n, PrimitiveDeclaration prim)
   tags    <- regConstructorTags <$> ask
@@ -162,8 +164,31 @@ regModule (C.Module md dds ds) = do
     return (n, DataConstructorDeclaration tag (fromJust $ Map.lookup n arities))
   return $ Map.union dds' ds'
 
+
+-- This disallows 'Let's on unboxed values, and avoid some other copying
+simplAtom :: Map CoreName Atom -> Atom -> Atom
+simplAtom subst (ALocal n) = case Map.lookup n subst of
+  Just x  -> x
+  Nothing -> ALocal n
+simplAtom subst x          = x
+
+simplReg :: Map CoreName Atom -> Expression -> Expression
+simplReg subst (ELet bs e)           =
+  let (bas, bs') = partition (\(_, vs, b) -> case (vs, b) of
+                                             ([], EApplication _ []) -> True
+                                             _                       -> False
+                             ) bs
+      subst' = Map.union subst $ Map.fromList (fmap (\(x, [], EApplication a []) -> (x, a)) bas)
+  in
+  (case bs' of
+    [] -> id
+    _  -> ELet (fmap (\(x, vs, b) -> (x, vs, simplReg subst' b)) bs')
+  ) $ simplReg subst' e
+simplReg subst (EApplication a as)   = EApplication (simplAtom subst a) (simplAtom subst <$> as)
+simplReg subst (EDataCase a alts df) = EDataCase (simplAtom subst a) (Map.map (\(a, b) -> (a, simplReg subst b)) alts) (maybe Nothing (Just . simplReg subst) df)
+
 regExpression :: C.Expression -> RegMonad Expression
-regExpression = regExpression' . C.expressionValue
+regExpression e = regExpression' $ C.expressionValue e
   where
     regExpression' (C.EInteger i)                          = return $ EApplication (AConst i) []
     regExpression' (C.EChar c)                             = return $ EApplication (AConst (ord c)) []
