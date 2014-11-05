@@ -6,7 +6,7 @@ import Syntax.Name
 import qualified Core.Module as C
 
 import qualified Reg.Expression as Reg
-import Backend.Mips
+import Backend.Mips hiding (div)
 import Backend.Codegen
 import Backend.Mangle
 

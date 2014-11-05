@@ -5,7 +5,7 @@ import Syntax.Name
 import Reg.Expression
 import Reg.Graph
 
-import Backend.Mips
+import Backend.Mips hiding (div)
 import Backend.Mangle
 import Backend.Runtime
 
@@ -200,7 +200,9 @@ codegenExpression e = do
           Physical r -> do
             l rt r
           Stack i    -> do
-            lw rt (4 * i + 4 * stackMod + 4) sp
+            lw rt (4 * i + 4 * stackMod) sp
+        AGlobal n _ ->
+          l rt =<< global ("_closure_" ++ mangle n)
       j =<< global "_runtime_apply_continuation_0"
 
       -- Continuation
@@ -232,7 +234,6 @@ codegenExpression e = do
                                  Stack i            -> Stack (i + stk - cstk)
                                  Physical r         -> Physical r
                          ) c
-        traceShow c' $ return ()
         label lbl
         when (stk /= cstk) $ do
           sub sp sp (stk - cstk)

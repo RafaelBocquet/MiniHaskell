@@ -288,7 +288,7 @@ primitiveType p
                 = do
     tyIntP  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"
     tyInt  <- TyConstant <$> getBase TypeConstructorName "Int"
-    return $ makeTypeApplication TyArrow [tyInt, tyInt]
+    return $ makeTypeApplication TyArrow [tyIntP, tyInt]
   | p `elem` [ PrimitiveIntLT, PrimitiveIntLE, PrimitiveIntGT, PrimitiveIntGE, PrimitiveIntEQ, PrimitiveIntNE ]
                 = do
     tyIntP  <- TyConstant <$> getPrimitive TypeConstructorName "Int_prim"

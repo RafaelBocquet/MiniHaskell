@@ -324,7 +324,7 @@ aexpression :: { Expression SyntaxName }
                     1 -> head $1
                     _ -> foldl (\a b -> lll $ EApplication a b) (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName $ replicate (length $1 - 1) ','))) $1
                 }
-            | delimited('[', separated_nonempty_list(expression, ','), ']')
+            | delimited('[', separated_list(expression, ','), ']')
                 { foldl
                   (\a b -> lll $ EApplication (lll $ EApplication (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName ":"))) a) b)
                   (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName "[]")))

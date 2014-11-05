@@ -137,6 +137,8 @@ apply_continuation n = do
   j a3
   
   label under_label -- Not enough arguments
+  l v0 (-1 :: Int)
+  syscall
   -- Make a PAP with ENTRY = FAIL, CURRENT (REMAINING) ARITY = a2, 4*NVARS = 4*n, vars
   -- Need 4 * (3 + n) Heap memory
   l a0 (4 * (4 + n))

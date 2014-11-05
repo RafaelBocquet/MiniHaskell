@@ -6,6 +6,8 @@ import Control.Monad.State
 
 import Data.Char (ord)
 
+import Prelude hiding (div)
+
 newtype MipsRegister = MipsRegister Int
                      deriving (Eq, Ord)
 
@@ -49,26 +51,6 @@ hp   = MipsRegister 30
 
 rt   = MipsRegister 31
 
---t3   = MipsRegister 11
---t4   = MipsRegister 12
---t5   = MipsRegister 13
---t6   = MipsRegister 14
---t7   = MipsRegister 15
---s0   = MipsRegister 16
---s1   = MipsRegister 17
---s2   = MipsRegister 18
---s3   = MipsRegister 19
---s4   = MipsRegister 20
---s5   = MipsRegister 21
---s6   = MipsRegister 22
---s7   = MipsRegister 23
---t8   = MipsRegister 24
---t9   = MipsRegister 25
---gp   = MipsRegister 28
---sp   = MipsRegister 29
---fp   = MipsRegister 30
---ra   = MipsRegister 31
-
 newtype Address = Address (Either Int String)
 
 instance Show Address where
@@ -99,6 +81,9 @@ data MipsInstruction = Label Address
 
                      | Add MipsRegister MipsRegister MipsOperand
                      | Sub MipsRegister MipsRegister MipsOperand
+                     | Mul MipsRegister MipsRegister MipsRegister
+                     | Div MipsRegister MipsRegister MipsRegister
+                     | Rem MipsRegister MipsRegister MipsRegister
 
                      | L MipsRegister MipsOperand
                      | Lw MipsRegister Int MipsRegister
@@ -123,6 +108,10 @@ instance Show MipsInstruction where
   show (Sub t a (ORegister b))    = "\tsub " ++ show t ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
   show (Sub t a (OConst c))       = "\taddi " ++ show t ++ ", " ++ show a ++ ", " ++ show (-c) ++ "\n"
   show (Sub t a (OAddress _))     = error "show mips instruction"
+  
+  show (Mul t a b)                = "\tmul " ++ show t ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+  show (Div t a b)                = "\tdiv " ++ show t ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+  show (Rem t a b)                = "\trem " ++ show t ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
 
   show (L r (ORegister r'))       = "\tmove " ++ show r ++ ", " ++ show r' ++ "\n"
   show (L r (OConst c))           = "\tli " ++ show r ++ ", " ++ show c ++ "\n"
@@ -210,6 +199,15 @@ add t a b = tell . Instruction $ Add t a (toOperand b)
 
 sub :: Operand o => MipsRegister -> MipsRegister -> o -> SectionMonad ()
 sub t a b = tell . Instruction $ Sub t a (toOperand b)
+
+mul :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+mul t a b = tell . Instruction $ Mul t a b
+
+div :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+div t a b = tell . Instruction $ Div t a b
+
+rem :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+rem t a b = tell . Instruction $ Rem t a b
 
 l :: Operand o => MipsRegister -> o -> SectionMonad ()
 l t a = tell . Instruction $ L t (toOperand a)

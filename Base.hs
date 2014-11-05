@@ -6,23 +6,23 @@ module Base where {
 
 ; data Int = Int Int_prim
 
--- ; (+), (-), (*), div, rem :: Int -> Int -> Int
+; (+), (-), (*), div :: Int -> Int -> Int
 ; (+) (Int a) (Int b) = add_prim a b
--- ; (-) (Int a) (Int b) = Int (sub_prim a b)
--- ; (*) (Int a) (Int b) = Int (mul_prim a b)
--- ; div (Int a) (Int b) = Int (div_prim a b)
--- ; rem (Int a) (Int b) = Int (rem_prim a b)
+; (-) (Int a) (Int b) = sub_prim a b
+; (*) (Int a) (Int b) = mul_prim a b
+; div (Int a) (Int b) = div_prim a b
+; rem (Int a) (Int b) = rem_prim a b
 
--- ; negate :: Int -> Int
--- ; negate (Int a) = Int (negate_prim a)
+; negate :: Int -> Int
+; negate (Int a) = negate_prim a
 
 -- ; (<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
 -- ; (<)  (Int a) (Int b) = intLT_prim a b
--- ; (<=) (Int a) (Int b)  = intLE_prim a b
+-- ; (<=) (Int a) (Int b) = intLE_prim a b
 -- ; (>)  (Int a) (Int b) = intGT_prim a b
--- ; (>=) (Int a) (Int b)  = intGE_prim a b
--- ; (==) (Int a) (Int b)  = intEQ_prim a b
--- ; (/=) (Int a) (Int b)  = intNE_prim a b
+-- ; (>=) (Int a) (Int b) = intGE_prim a b
+-- ; (==) (Int a) (Int b) = intEQ_prim a b
+-- ; (/=) (Int a) (Int b) = intNE_prim a b
 
 -- ; fromInteger :: Int_prim -> Int
 -- ; fromInteger x = x
@@ -54,9 +54,12 @@ module Base where {
 --  ; (>=) (Char a) (Char b) = charGE_prim a b
 --; }
 
+; head :: [a] -> a
+; head l = case l of { x : _ -> x }
+
 -- Any
 ; id :: Int -> Int
-; id x = x + x + x + x
+; id x = (x * x) + ((x * x) `div` (x + x))
 
 -- ; id'' x = id' id' x
 
@@ -84,16 +87,13 @@ module Base where {
 -- ; not True  = False
 -- ; not False = True
 
--- ; (&&), (||) :: Bool -> Bool -> Bool
--- ; (&&) True  = \x -> x
--- ; (&&) False = \_ -> False
+; (&&), (||) :: Bool -> Bool -> Bool
+; (&&) True  x = x
+; (&&) False x = False
 
--- ; (||) True  = \_ -> True
--- ; (||) False = \x -> x
+; (||) True  _ = True
+; (||) False x = x
 
 -- List
 
--- ; append :: List a -> List a -> List a
--- ; append []       ys = ys
--- ; append (x : xs) ys = x : append xs ys
 }
