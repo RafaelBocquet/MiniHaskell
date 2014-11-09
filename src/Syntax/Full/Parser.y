@@ -347,11 +347,19 @@ apattern : varId                        { Pattern PWildcard [$1] }
          | varId '@' apattern           { let Pattern pat as = $3 in Pattern pat ($1 : as) }
          | '_'                          { Pattern PWildcard [] }
          | qconId                       { Pattern (PConstructor $1 []) [] }
-         | delimited('(', separated_nonempty_list(pattern, ','), ')')
+         | delimited('(', separated_list(pattern, ','), ')')
               { case $1 of
+                  []    -> Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "()")) []) []
                   [pat] -> pat
-                  _     -> Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName $ replicate (length $1 - 1) ',')) $1) []
+                  ps    -> Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName $ replicate (length $1 - 1) ',')) $1) []
               }
+         | delimited('[', separated_list(pattern, ','), ']')
+              { foldr
+                (\x y -> Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName ":")) [x, y]) [])
+                (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "[]")) []) [])
+                $1
+              }
+
 
 {
 

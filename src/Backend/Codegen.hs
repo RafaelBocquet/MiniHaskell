@@ -56,7 +56,9 @@ codegenExpression e = do
            l rt r
          Stack s    -> do
            lw rt (4 * s) sp
-           
+       AConst i ->     do
+         makeConstant i
+         l rt v0
       sub sp sp (4 * nStackSize)
       forM [0 .. sSize - 1] $ \i -> do
         lw v0 (4 * nStackSize + 4 * i) sp
@@ -82,9 +84,20 @@ codegenExpression e = do
             n_label <- global $ "_closure_" ++ mangle n
             l v0 n_label
             sw v0 (4 * (stackSlot i)) sp
-          AConst i    -> do
-            l v0 i
+          AConst n    -> do
+            makeConstant n
             sw v0 (4 * (stackSlot i)) sp
+        makeConstant i = do
+          l a0 (12 :: Int)
+          l v0 (9 :: Int)
+          syscall
+          l a0 =<< global "_runtime_continue"
+          sw a0 0 v0
+          l a0 (1 :: Int) -- Tag for Int or Char
+          sw a0 4 v0
+          l a0 i
+          sw a0 8 v0
+          
     codegenExpression' (ELet bs e) c sSize                    = do
       c_labels <- fmap Map.fromList $ forM bs $ \(x, _, _) -> do
         l <- newLabel

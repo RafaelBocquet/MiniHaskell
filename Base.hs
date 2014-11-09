@@ -18,14 +18,14 @@ module Base where {
 
 -- ; (<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
 -- ; (<)  (Int a) (Int b) = intLT_prim a b
--- ; (<=) (Int a) (Int b) = intLE_prim a b
+-- ; (<=) (Int a) (Int b)  = intLE_prim a b
 -- ; (>)  (Int a) (Int b) = intGT_prim a b
--- ; (>=) (Int a) (Int b) = intGE_prim a b
--- ; (==) (Int a) (Int b) = intEQ_prim a b
--- ; (/=) (Int a) (Int b) = intNE_prim a b
+-- ; (>=) (Int a) (Int b)  = intGE_prim a b
+-- ; (==) (Int a) (Int b)  = intEQ_prim a b
+-- ; (/=) (Int a) (Int b)  = intNE_prim a b
 
--- ; fromInteger :: Int_prim -> Int
--- ; fromInteger x = x
+; fromInteger :: Int -> Int
+; fromInteger x = x
 
 -- ; error x = error x
 
@@ -57,13 +57,26 @@ module Base where {
 ; head :: [a] -> a
 ; head (x : _) = x
 
+; tail :: [a] -> [a]
+; tail (_ : xs) = xs
+
+; foldr :: (a -> b -> b) -> b -> [a] -> b
+; foldr f x []       = x
+; foldr f x (y : ys) = f y (foldr f x ys)
+
+; foldl :: (b -> a -> b) -> b -> [a] -> b
+; foldl f x []       = x
+; foldl f x (y : ys) = foldl f (f x y) ys
+
 ; sum :: [Int] -> Int
-; sum (x : xs@(_ : _)) = x + sum xs;
-; sum (x : _)       = x
+; sum xs = foldr (+) 0 xs
+
+; product :: [Int] -> Int
+; product xs = foldl (*) 1 xs
 
 -- Any
 ; id :: Int -> Int
-; id x = sum (x : (x : (x : (x : []))))
+; id x = product (1 : (2 : (3 : (4 : []))))
 
 -- ; id'' x = id' id' x
 
