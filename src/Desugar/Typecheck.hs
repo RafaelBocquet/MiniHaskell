@@ -114,18 +114,45 @@ instantiateType (PolyType as t) = do
 environmentVariables :: TypecheckMonad (Set CoreName)
 environmentVariables = Set.unions . (freePolyTypeVariables <$>) . Map.elems . environmentTypeMap <$> ask
 
+-- TODO : Pattern comparison is bad, it should be done modulo the name of the variables
+-- -> Pattern skeleton, rebind variables afterward
+
 data PatternList = PatternListExpression (Expression CoreName)
-                 | PatternListMap (Map (Pattern CoreName) PatternList)
+                 | PatternListMap (Map (Pattern CoreName) ([Pattern CoreName], PatternList))
 
 patternListInsert :: ([Pattern CoreName], Expression CoreName) -> PatternList -> PatternList
 patternListInsert (pat:pats, e) (PatternListMap mp) = 
-  PatternListMap $ Map.alter (Just . patternListInsert (pats, e) . maybe (PatternListMap Map.empty) id) pat mp 
+  PatternListMap $ Map.alter (Just . (\(pats', pl) -> (pat:pats', patternListInsert (pats, e) pl)) . maybe ([], PatternListMap Map.empty) id) (patternSkeleton pat) mp 
 patternListInsert ([], e) _                         = PatternListExpression e
+
+unifyPatterns :: [Pattern CoreName] -> Pattern CoreName
+unifyPatterns pats =
+  let vs    = concat (fmap (\(Pattern _ vs) -> vs) pats)
+      pats' = fmap (\(Pattern p _)          -> p) pats
+      pat'  = unifyPatterns' pats'
+  in Pattern pat' vs
+
+unifyPatterns' :: [Pattern' CoreName] -> Pattern' CoreName
+unifyPatterns' (PWildcard : _)              = PWildcard
+unifyPatterns' pats@(PConstructor n ps : _) =
+  let ps' = fmap unifyPatterns $ foldr (\(PConstructor _ ps) acc ->
+                                         zipWith (:) ps acc
+                                       ) (const [] <$> ps) pats in
+  PConstructor n ps'
+unifyPatterns' ((PLiteralInt i) : _)       = PLiteralInt i
+unifyPatterns' ((PLiteralChar c) : _)      = PLiteralChar c
+  
 
 reducePatternList :: Maybe (Expression CoreName) -> [CoreName] -> PatternList -> Expression CoreName
 reducePatternList df [] (PatternListExpression e) = e
 reducePatternList df (v:vs) (PatternListMap mp)   =
-  Locate noLocation $ ECase (Locate noLocation $ EVariable (QName [] VariableName v)) (Map.toList . Map.map (reducePatternList df vs) $ mp)
+  Locate noLocation $ ECase (Locate noLocation $ EVariable (QName [] VariableName v))
+  $ fmap
+  (\(_, (pats, pl)) ->
+    let e = reducePatternList df vs pl in
+    (unifyPatterns pats, e)
+  )
+  (Map.toList mp)
 
 typecheckPatterns :: Expression CoreName -> [(Pattern CoreName, Expression CoreName)] -> TypecheckMonad C.Expression
 typecheckPatterns epat pats = do
@@ -198,6 +225,7 @@ typecheckPatterns epat pats = do
                       )
                 $ e'
               )
+      _ -> error (show pats)
 
     typecheckPatternGroupTypeData dc pats = do
       epat' <- typecheckExpression epat
@@ -215,22 +243,40 @@ typecheckPatterns epat pats = do
             )
             Map.empty
             pats
-      df'   <- maybe (return Nothing) (fmap Just . typecheckExpression) df
-      dfvar <- maybe (return Nothing) (const $ fmap Just generateName) df
-      sigma <- TyVariable <$> generateName
-      cases <- fmap Map.fromList $ maybe id (\v -> localBind v (PolyType Set.empty sigma)) dfvar
-        $ forM (Map.toList cases) $ \(con, patList) -> do
-          conty   <- instantiateType =<< fromJust . Map.lookup con . environmentTypeMap <$> ask
-          conargs <- constructorArguments conty
-          conret  <- constructorResultType conty
-          liftUnify $ unifyType conret (C.expressionType epat')
-          vars    <- forM conargs $ const generateName
-          ecase   <- localBindMany (Map.fromList $ zip vars (PolyType Set.empty <$> conargs))
-                   $ typecheckExpression (reducePatternList (Locate noLocation . EVariable . QName [] VariableName <$> dfvar) vars patList)
-          liftUnify $ unifyType (C.expressionType ecase) sigma
-          return (con, (vars, ecase))
+          vs = concat $ fmap (\(Pattern _ pvs, _) -> pvs) pats
+      (df', dfvar, sigma, cases) <- localBindMany (Map.fromList $ (\v -> (v, PolyType Set.empty (C.expressionType epat'))) <$> vs) $ do
+        df'   <- maybe (return Nothing) (fmap Just . typecheckExpression) df
+        dfvar <- maybe (return Nothing) (const $ fmap Just generateName) df
+        sigma <- TyVariable <$> generateName
+        cases <- fmap Map.fromList $ maybe id (\v -> localBind v (PolyType Set.empty sigma)) dfvar
+                 $ forM (Map.toList cases) $ \(con, patList) -> do
+                   conty   <- instantiateType =<< fromJust . Map.lookup con . environmentTypeMap <$> ask
+                   conargs <- constructorArguments conty
+                   conret  <- constructorResultType conty
+                   liftUnify $ unifyType conret (C.expressionType epat')
+                   vars    <- forM conargs $ const generateName
+                   ecase   <- localBindMany (Map.fromList $ zip vars (PolyType Set.empty <$> conargs))
+                              $ typecheckExpression (reducePatternList (Locate noLocation . EVariable . QName [] VariableName <$> dfvar) vars patList)
+                   liftUnify $ unifyType (C.expressionType ecase) sigma
+                   return (con, (vars, ecase))
+        return (df', dfvar, sigma, cases)
       return
         $ maybe id (\v -> C.Expression sigma . C.ELet (Map.singleton v (PolyType Set.empty (C.expressionType (fromJust df')), fromJust df'))) dfvar
+          $ (if null vs
+             then id
+             else C.Expression sigma . (C.ELet (Map.fromList
+                                                $ ( head vs
+                                                  , ( PolyType Set.empty (C.expressionType epat')
+                                                    , epat'
+                                                    )
+                                                  )
+                                                : fmap (\v -> ( v
+                                                             , ( PolyType Set.empty (C.expressionType epat')
+                                                             , C.Expression (C.expressionType epat') (C.EVariable (QName [] VariableName (head vs)))
+                                                             )
+                                                             )
+                                                       ) (tail vs)
+                                               )))
           $ C.Expression sigma $ C.ECase epat' $ C.PData cases (C.Expression sigma . C.EVariable . QName [] VariableName <$> dfvar)
 
 typecheckExpression :: Expression CoreName -> TypecheckMonad C.Expression

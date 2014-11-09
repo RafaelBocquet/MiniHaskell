@@ -90,7 +90,7 @@ compile mods = do
       start <- global "_runtime_start"
       j start
     runtime
-    forM_ (Map.toList rg) $ \(name, decl) -> textSection $ do
+    forM_ (Map.toList rg) $ \(name, decl) -> textSection $ traceShow name $ do
       g_label <- global $ mangle name
       case decl of
        Reg.DataConstructorDeclaration _ ar -> word ar

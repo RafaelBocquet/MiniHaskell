@@ -55,11 +55,15 @@ module Base where {
 --; }
 
 ; head :: [a] -> a
-; head l = case l of { x : _ -> x }
+; head (x : _) = x
+
+; sum :: [Int] -> Int
+; sum (x : xs@(_ : _)) = x + sum xs;
+; sum (x : _)       = x
 
 -- Any
 ; id :: Int -> Int
-; id x = (x * x) + ((x * x) `div` (x + x))
+; id x = sum (x : (x : (x : (x : []))))
 
 -- ; id'' x = id' id' x
 

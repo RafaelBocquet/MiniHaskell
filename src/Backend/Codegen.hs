@@ -220,7 +220,21 @@ codegenExpression e = do
        Nothing -> do
          l v0 (-1 :: Int)
          syscall
-       Just e  -> codegenExpression' e c' (sSize + stackMod)
+       Just e  -> do
+        let efvs = expressionFreeVariables e
+            cstk = Map.foldr (\r acc -> case r of
+                                         Physical _ -> acc
+                                         Stack i    -> max acc (i + 1)
+                             ) 0 c'
+            (stk, c) = colorGraph (makeGraph e) c' cstk
+        let c' = Map.map (\r -> case r of
+                                 Stack i | i >= cstk -> Stack (i - cstk)
+                                 Stack i            -> Stack (i + stk - cstk)
+                                 Physical r         -> Physical r
+                         ) c
+        when (stk /= cstk) $ do
+          sub sp sp (stk - cstk)
+        codegenExpression' e c' (sSize + stackMod + stk - cstk - 1)
       -- Alt cases
       forM_ (zip altsList alt_labels) $ \((_, (vs, e)), lbl) -> do
         let efvs = expressionFreeVariables e

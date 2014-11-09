@@ -60,6 +60,15 @@ data Pattern' n = PWildcard
                 | PLiteralChar Char
                 deriving (Show, Eq, Ord)
 
+patternSkeleton :: Pattern n -> Pattern n
+patternSkeleton (Pattern p _) = Pattern (patternSkeleton' p) []
+
+patternSkeleton' :: Pattern' n -> Pattern' n
+patternSkeleton' PWildcard             = PWildcard
+patternSkeleton' (PConstructor n pats) = PConstructor n $ patternSkeleton <$> pats
+patternSkeleton' p@(PLiteralInt _)     = p
+patternSkeleton' p@(PLiteralChar _)    = p
+
 -- PVariable v ~ PAs v PWildcard
 
 patternVariables :: Ord n => Pattern n -> Set (QName n)

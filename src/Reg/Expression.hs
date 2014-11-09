@@ -168,7 +168,7 @@ regModule (C.Module md dds ds) = do
 -- This disallows 'Let's on unboxed values, and avoid some other copying
 simplAtom :: Map CoreName Atom -> Atom -> Atom
 simplAtom subst (ALocal n) = case Map.lookup n subst of
-  Just x  -> x
+  Just x  -> simplAtom subst x
   Nothing -> ALocal n
 simplAtom subst x          = x
 

@@ -17,6 +17,8 @@ import qualified Syntax.Full.Token as Full
 import qualified Syntax.Full.Parser as Full
 import Primitive
 
+import Core.Pretty as C
+
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -114,6 +116,7 @@ compileFull fn = do
       Left e -> return (putStrLn.show $ e)
       Right ps -> do
         r <- typecheck (makeModuleMap $ primitiveModule : ps)
+        return $ putStrLn . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
         r' <- compile r
         return $ putStrLn.show $ r'
   where
