@@ -23,44 +23,23 @@ continue = do
 
 exit :: SectionMonad ()
 exit = do
-  exit <- global "_runtime_exit"
-  exit_continuation <- newLabel
-  label exit
-  -- Eval RT :
-  sub sp sp (4 :: Int)
-  l v0 exit_continuation
-  sw v0 0 sp
-  j =<< global "_runtime_apply_continuation_0"
-  
-  label exit_continuation
-  l  v0 (1 :: Int)
-  lw  a0 8 rt
-  syscall
+  label =<< global "_runtime_exit"
   l  v0 (10 :: Int)
   syscall
 
 start :: SectionMonad ()
 start = do
-  start <- global "_runtime_start"
-  continue <- global "_runtime_continue"
-  exit <- global "_runtime_exit"
-  idl <- global "_closure_Base_id"
-  apl <- global "_runtime_apply_continuation_1"
-  label start
+  label =<< global "_runtime_start"
   
-  sub sp sp (12 :: Int)
-  l v0 exit
-  sw v0 8 sp
-  l v0 =<< global "_int_42"
+  sub sp sp (8 :: Int)
+  l v0 =<< global "_runtime_exit"
   sw v0 4 sp
-  l v0 apl
+  l v0 =<< global "_runtime_perform_io"
   sw v0 0 sp
 
-  l rt idl
+  l rt =<< global "_closure_Main_main"
 
-  -- Last continuation is exit
-
-  j continue
+  j =<< global "_runtime_apply_continuation_0"
 
 pap :: SectionMonad ()
 pap = do
@@ -68,6 +47,13 @@ pap = do
   label =<< global "_runtime_pap"
   l v0 (-10 :: Int)
   syscall 
+
+perform_io :: SectionMonad ()
+perform_io = do
+  label =<< global "_runtime_perform_io"
+  lw rt 4 rt
+  lw t0 0 rt
+  j  t0
 
 apply_continuation_0 :: SectionMonad ()
 apply_continuation_0 = do
@@ -193,6 +179,21 @@ apply_continuation n = do
   l v0 (-11 :: Int)
   syscall
 
+data_error :: SectionMonad ()
+data_error = do
+  label =<< global "_data_error"
+  asciiz "Error : "
+
+data_newline :: SectionMonad ()
+data_newline = do
+  label =<< global "_data_newline"
+  asciiz "\n"
+
+data_unit :: SectionMonad ()
+data_unit = do
+  label =<< global "_data_unit"
+  word =<< global "_runtime_continue"
+  word (1 :: Int)
   
 runtime :: MipsMonad ()
 runtime = do
@@ -201,14 +202,13 @@ runtime = do
     exit
     start
     pap
+    perform_io
     apply_continuation_0
     forM_ [1..maxSingleApplication] apply_continuation
   dataSection $ do
     label =<< global "_runtime_apply_continuation_array"
     forM_ [0..maxSingleApplication] $ \i ->
       word =<< global ("_runtime_apply_continuation_" ++ show i)
-
-    label =<< global "_int_42"
-    word =<< global "_runtime_continue"
-    word (1 :: Int)
-    word (42 :: Int)
+    data_error
+    data_newline
+    data_unit

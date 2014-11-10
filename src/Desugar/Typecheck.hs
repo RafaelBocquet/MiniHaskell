@@ -355,14 +355,14 @@ primitiveType p
     tyCharP <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
     tyBool <- TyConstant <$> getPrimitive TypeConstructorName "Bool"
     return $ makeTypeApplication TyArrow [tyCharP, makeTypeApplication TyArrow [tyCharP, tyBool]]
-  | p `elem` [ PrimitiveBind ]
+  | p `elem` [ PrimitiveBindIO ]
                 = do
     tyIO   <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
     a      <- TyVariable <$> generateName
     b      <- TyVariable <$> generateName
     let tyArrow = makeTypeApplication TyArrow
     return $ tyArrow [tyIO [a], tyArrow [tyArrow [a, tyIO [b]], tyIO [b]]]
-  | p `elem` [ PrimitiveReturn ]
+  | p `elem` [ PrimitiveReturnIO ]
                 = do
     tyIO   <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
     a      <- TyVariable <$> generateName
@@ -370,9 +370,9 @@ primitiveType p
   | p `elem` [ PrimitivePutChar ]
                 = do
     tyIO   <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "IO"
-    tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
+    tyCharP <- TyConstant <$> getPrimitive TypeConstructorName "Char_prim"
     tyUnit <- TyConstant <$> getPrimitive TypeConstructorName "()"
-    return $ makeTypeApplication TyArrow [tyChar, tyIO [tyUnit]]
+    return $ makeTypeApplication TyArrow [tyCharP, tyIO [tyUnit]]
   | p `elem` [ PrimitiveError ]
                 = do
     tyList <- makeTypeApplication . TyConstant <$> getPrimitive TypeConstructorName "[]"

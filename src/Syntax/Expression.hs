@@ -104,8 +104,8 @@ data PrimitiveDeclaration = PrimitiveIntAdd
                           | PrimitiveCharGE
                           | PrimitiveCharEQ
                           | PrimitiveCharNE
-                          | PrimitiveBind
-                          | PrimitiveReturn
+                          | PrimitiveBindIO
+                          | PrimitiveReturnIO
                           | PrimitivePutChar
                           | PrimitiveError
                           deriving (Show, Eq, Ord)

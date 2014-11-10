@@ -1,6 +1,7 @@
 module Backend.Codegen where
 
 import Syntax.Name
+import qualified Syntax.Expression as S
 
 import Reg.Expression
 import Reg.Graph
@@ -296,7 +297,23 @@ codegenDataConstructor tag ar = do
   l rt v0
   j =<< global "_runtime_continue"
 
-codegenDeclaration :: Declaration -> SectionMonad ()
-codegenDeclaration (Declaration e)                   = traceShow e $ codegenExpression e
-codegenDeclaration (PrimitiveDeclaration p)          = codegenPrimitive p
-codegenDeclaration (DataConstructorDeclaration t ar) = codegenDataConstructor t ar
+
+codegenDeclaration :: QName CoreName -> Declaration -> SectionMonad ()
+codegenDeclaration name (Declaration e)                   = do
+  word (0 :: Int)
+  label =<< global (mangle name)
+  codegenExpression e
+codegenDeclaration name (PrimitiveDeclaration p)          = do
+  word $ case p of
+          _ | p `elem` [S.PrimitiveIntAdd, S.PrimitiveIntSub, S.PrimitiveIntMul, S.PrimitiveIntDiv, S.PrimitiveIntRem]              -> (2 :: Int)
+          S.PrimitiveIntNegate                                                                                                      -> 1
+          _ | p `elem` [S.PrimitiveIntEQ, S.PrimitiveIntNE, S.PrimitiveIntLT, S.PrimitiveIntLE, S.PrimitiveIntGT, S.PrimitiveIntGE] -> 2
+          S.PrimitiveBindIO                                                                                                         -> 2
+          S.PrimitiveReturnIO                                                                                                       -> 1
+          S.PrimitivePutChar                                                                                                        -> 1
+  label =<< global (mangle name)
+  codegenPrimitive p
+codegenDeclaration name (DataConstructorDeclaration t ar) = do
+  word (ar :: Int)
+  label =<< global (mangle name)
+  codegenDataConstructor t ar

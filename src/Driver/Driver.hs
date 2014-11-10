@@ -90,15 +90,7 @@ compile mods = do
       start <- global "_runtime_start"
       j start
     runtime
-    forM_ (Map.toList rg) $ \(name, decl) -> textSection $ traceShow name $ do
-      g_label <- global $ mangle name
-      case decl of
-       Reg.DataConstructorDeclaration _ ar -> word ar
-       Reg.PrimitiveDeclaration p          -> word (2 :: Int)
-       _                                   -> word (0 :: Int)
-       
-      label g_label
-      codegenDeclaration decl
+    forM_ (Map.toList rg) $ \(name, decl) -> textSection $ codegenDeclaration name decl
     forM_ (Map.toList rg) $ \(name, _) -> dataSection $ do
       closure_g_label <- global $ "_closure_" ++ mangle name
       g_label <- global $ mangle name

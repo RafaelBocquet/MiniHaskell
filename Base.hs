@@ -16,18 +16,19 @@ module Base where {
 ; negate :: Int -> Int
 ; negate (Int a) = negate_prim a
 
--- ; (<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
--- ; (<)  (Int a) (Int b) = intLT_prim a b
--- ; (<=) (Int a) (Int b)  = intLE_prim a b
--- ; (>)  (Int a) (Int b) = intGT_prim a b
--- ; (>=) (Int a) (Int b)  = intGE_prim a b
--- ; (==) (Int a) (Int b)  = intEQ_prim a b
--- ; (/=) (Int a) (Int b)  = intNE_prim a b
+; (<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
+; (<)  (Int a) (Int b) = intLT_prim a b
+; (<=) (Int a) (Int b)  = intLE_prim a b
+; (>)  (Int a) (Int b) = intGT_prim a b
+; (>=) (Int a) (Int b)  = intGE_prim a b
+; (==) (Int a) (Int b)  = intEQ_prim a b
+; (/=) (Int a) (Int b)  = intNE_prim a b
 
 ; fromInteger :: Int -> Int
 ; fromInteger x = x
 
--- ; error x = error x
+; error :: [Char] -> a
+; error x = error x
 
 -- ; (>>=) :: IO a -> (a -> IO b) -> IO b
 -- ; (>>=) a b = error a
@@ -37,7 +38,7 @@ module Base where {
 
 -- Char
 
--- ; data Char = Char Char_prim
+; data Char = Char Char_prim
 
 -- ; chr (Int a) = Char (chr_prim a)
 -- ; ord (Char a) = Int (ord_prim a)
@@ -54,6 +55,104 @@ module Base where {
 --  ; (>=) (Char a) (Char b) = charGE_prim a b
 --; }
 
+-- Maybe
+
+; data Maybe a = Nothing
+               | Just a
+
+-- Either
+
+; data Either a b = Left a
+                  | Right b
+
+-- Ordering
+
+; data Ordering = LT
+                | EQ
+                | GT
+
+-- IO
+
+; return = return_io_prim
+; putChar (Char c) = putChar_prim c
+; (>>=) a f = bind_io_prim a f
+
+-- Other
+
+-- ; sum :: [Int] -> Int
+-- ; sum xs = foldl (+) 0 xs
+
+; if' :: a -> a -> Bool -> a
+; if' a b True  = a
+; if' a b False = b
+
+; count :: Int -> Int -> Int -> [Int]
+; count f t s = if' (f : []) (f : count (f + s) t s) (f == t)
+
+-- ; product :: [Int] -> Int
+-- ; product xs = foldl (*) 1 xs
+
+-- TODO : bind not good 
+
+; main :: IO ()
+; main = (putChar 'a') >>= (\_ -> putChar 'a') >>= (\_ -> putChar 'a')
+
+-- Any
+
+; id :: Int -> Int
+; id x = head (map (\x -> x + 1) (x : []))
+
+; fst :: (a, b) -> a
+; fst (x, _) = x
+
+; snd :: (a, b) -> b
+; snd (_, y) = y
+
+; (.) :: (b -> c) -> (a -> b) -> (a -> c)
+; (.) f g x = f (g x)
+
+; const :: a -> b -> a
+; const x _ = x
+
+; ($) :: (a -> b) -> a -> b
+; ($) f x = f x
+
+-- ; undefined :: a
+-- ; undefined = error "undefined"
+
+-- Bool
+
+; not :: Bool -> Bool
+; not True  = False
+; not False = True
+
+; (&&), (||) :: Bool -> Bool -> Bool
+; (&&) True  x = x
+; (&&) False x = False
+
+; (||) True  _ = True
+; (||) False x = x
+
+-- List
+
+; map :: (a -> b) -> [a] -> [b]
+; map f []       = []
+; map f (x : xs) = f x : map f xs
+
+; singleton :: a -> [a]
+; singleton x = x : []
+
+; (++) :: [a] -> [a] -> [a]
+; (++) [] ys       = ys
+; (++) (x : xs) ys = x : (xs ++ ys)
+
+; filter :: (a -> Bool) -> [a] -> [a]
+; filter f [] = []
+; filter f (x : xs) = case f x of {
+  ; True  -> x : filter f xs
+  ; False -> filter f xs
+  }
+
 ; head :: [a] -> a
 ; head (x : _) = x
 
@@ -68,49 +167,22 @@ module Base where {
 ; foldl f x []       = x
 ; foldl f x (y : ys) = foldl f (f x y) ys
 
-; sum :: [Int] -> Int
-; sum xs = foldr (+) 0 xs
+; iterate :: (a -> a) -> a -> [a]
+; iterate f x = x : iterate f (f x)
 
-; product :: [Int] -> Int
-; product xs = foldl (*) 1 xs
+; repeat :: a -> [a]
+; repeat x = x : repeat x
 
--- Any
-; id :: Int -> Int
-; id x = product (1 : (2 : (3 : (4 : []))))
+; cycle :: [a] -> [a]
+; cycle xs = xs ++ cycle xs
 
--- ; id'' x = id' id' x
+; zip :: [a] -> [b] -> [(a, b)]
+; zip [] _ = []
+; zip _ [] = []
+; zip (x : xs) (y : ys) = (x, y) : zip xs ys
 
--- ; id' x = x
-
--- ; fst (x, _) = x
--- ; snd (_, y) = y
-
-
--- ; (.) :: (b -> c) -> (a -> b) -> (a -> c)
--- ; (.) f g x = f (g x)
-
--- ; const :: a -> b -> a
--- ; const x _ = x
-
--- ; ap :: (a -> b) -> a -> b
--- ; ap f x = f x
-
--- ; undefined :: a
--- ; undefined = error "undefined"
-
--- Bool
-
--- ; not :: Bool -> Bool
--- ; not True  = False
--- ; not False = True
-
-; (&&), (||) :: Bool -> Bool -> Bool
-; (&&) True  x = x
-; (&&) False x = False
-
-; (||) True  _ = True
-; (||) False x = x
-
--- List
+-- ; Typechecking loop ...
+-- ; unzip :: [(a, b)] -> ([a], [b])
+-- ; unzip l = foldr (\(a, b) (as, bs) -> (a : as, b : bs)) ([], []) l
 
 }

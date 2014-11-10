@@ -46,12 +46,13 @@ primitiveModule = Module
       , (UserName "div_prim",    PrimitiveDeclaration PrimitiveIntDiv)
       , (UserName "rem_prim",    PrimitiveDeclaration PrimitiveIntRem)
       , (UserName "negate_prim", PrimitiveDeclaration PrimitiveIntNegate)
-      -- , (UserName "intLT_prim",  PrimitiveDeclaration PrimitiveIntLT)
-      -- , (UserName "intLE_prim",  PrimitiveDeclaration PrimitiveIntLE)
-      -- , (UserName "intGT_prim",  PrimitiveDeclaration PrimitiveIntGT)
-      -- , (UserName "intGE_prim",  PrimitiveDeclaration PrimitiveIntGE)
-      -- , (UserName "intEQ_prim",  PrimitiveDeclaration PrimitiveIntEQ)
-      -- , (UserName "intNE_prim",  PrimitiveDeclaration PrimitiveIntNE)
+
+      , (UserName "intLT_prim",  PrimitiveDeclaration PrimitiveIntLT)
+      , (UserName "intLE_prim",  PrimitiveDeclaration PrimitiveIntLE)
+      , (UserName "intGT_prim",  PrimitiveDeclaration PrimitiveIntGT)
+      , (UserName "intGE_prim",  PrimitiveDeclaration PrimitiveIntGE)
+      , (UserName "intEQ_prim",  PrimitiveDeclaration PrimitiveIntEQ)
+      , (UserName "intNE_prim",  PrimitiveDeclaration PrimitiveIntNE)
 
       -- , (UserName "ord_prim",     PrimitiveDeclaration PrimitiveOrd)
       -- , (UserName "chr_prim",     PrimitiveDeclaration PrimitiveChr)
@@ -62,9 +63,9 @@ primitiveModule = Module
       -- , (UserName "charEQ_prim",  PrimitiveDeclaration PrimitiveCharEQ)
       -- , (UserName "charNE_prim",  PrimitiveDeclaration PrimitiveCharNE)
 
-      -- , (UserName ">>=", PrimitiveDeclaration PrimitiveBind)
-      -- , (UserName "return", PrimitiveDeclaration PrimitiveReturn)
-      -- , (UserName "putChar", PrimitiveDeclaration PrimitivePutChar)
+      , (UserName "bind_io_prim", PrimitiveDeclaration PrimitiveBindIO)
+      , (UserName "return_io_prim", PrimitiveDeclaration PrimitiveReturnIO)
+      , (UserName "putChar_prim", PrimitiveDeclaration PrimitivePutChar)
 
       -- , (UserName "error", PrimitiveDeclaration PrimitiveError)
       ]

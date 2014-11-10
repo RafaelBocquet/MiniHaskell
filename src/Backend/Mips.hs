@@ -95,6 +95,15 @@ data MipsInstruction = Label Address
                      | Bltz MipsRegister Address
                      | Bgtz MipsRegister Address
 
+                     | Seq MipsRegister MipsRegister MipsRegister
+                     | Sne MipsRegister MipsRegister MipsRegister
+                     | Slt MipsRegister MipsRegister MipsRegister
+                     | Sle MipsRegister MipsRegister MipsRegister
+                     | Sgt MipsRegister MipsRegister MipsRegister
+                     | Sge MipsRegister MipsRegister MipsRegister
+
+                     | Asciiz String
+
                      | Syscall
 
 instance Show MipsInstruction where
@@ -127,6 +136,15 @@ instance Show MipsInstruction where
   show (Bne r r' a)               = "\tbne " ++ show r ++ ", " ++ show r' ++ ", " ++ show a ++ "\n"
   show (Bltz r a)                 = "\tbltz " ++ show r ++ ", " ++ show a ++ "\n"
   show (Bgtz r a)                 = "\tbgtz " ++ show r ++ ", " ++ show a ++ "\n"
+  
+  show (Seq r a b)                = "\tseq " ++ show r ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+  show (Sne r a b)                = "\tsne " ++ show r ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+  show (Slt r a b)                = "\tslt " ++ show r ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+  show (Sle r a b)                = "\tsle " ++ show r ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+  show (Sgt r a b)                = "\tsgt " ++ show r ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+  show (Sge r a b)                = "\tsge " ++ show r ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
+
+  show (Asciiz s)                 = "\t.asciiz " ++ show s ++ "\n"
 
   show Syscall                    = "\tsyscall\n"
 
@@ -235,6 +253,27 @@ bltz a b = tell . Instruction $ Bltz a b
 
 bgtz :: MipsRegister -> Address -> SectionMonad ()
 bgtz a b = tell . Instruction $ Bgtz a b
+
+seq :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+seq r a b = tell . Instruction $ Seq r a b
+
+sne :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+sne r a b = tell . Instruction $ Sne r a b
+
+slt :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+slt r a b = tell . Instruction $ Slt r a b
+
+sle :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+sle r a b = tell . Instruction $ Sle r a b
+
+sgt :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+sgt r a b = tell . Instruction $ Sgt r a b
+
+sge :: MipsRegister -> MipsRegister -> MipsRegister -> SectionMonad ()
+sge r a b = tell . Instruction $ Sge r a b
+
+asciiz :: String -> SectionMonad ()
+asciiz s = tell . Instruction $ Asciiz s
 
 syscall :: SectionMonad ()
 syscall = (tell . Instruction) Syscall

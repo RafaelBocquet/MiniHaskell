@@ -15,7 +15,7 @@ $bit   = [0-1]
 $hexit = [0-9a-fA-F]
 $octit = [0-7]
 
-$symbolChar     = [!#\$\%&\*\+\.\/\<=>\?@\\\^\|\-\~:]
+$symbolChar     = [!\#\$\%&\*\+\.\/\<=>\?@\\\^\|\-\~:]
 $smallChar      = [a-z]
 $largeChar      = [A-Z]
 $identifierChar = [a-zA-Z0-9_\']
@@ -87,6 +87,7 @@ $identifierChar = [a-zA-Z0-9_\']
 @moduleName @symId { const (TkIdentifier []) }
 
 @integer    { const (TkInteger . read) }
+\'a\'       { const (const $ TkChar 'a') }
 
 {
 

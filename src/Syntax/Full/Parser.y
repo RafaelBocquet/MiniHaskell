@@ -93,7 +93,7 @@ import Debug.Trace
   '{'               { TkLBrace }
   '}'               { TkRBrace }
 
-%nonassoc 'if' 'then' 'else' '\\' '->'
+%nonassoc 'if' 'then' 'else' '\\' '->' 'let' 'in'
 %nonassoc tvarId tconId tsymId tsymconId tqvarId tqconId tqsymId tqsymconId '`'
 
 %nonassoc LOW
@@ -215,7 +215,7 @@ fixity :: { Fixity }
        | 'infix'  { Infix }
 
 leftHandSide :: { (SyntaxName, [Pattern SyntaxName]) }
-             : svarId nonempty_list(apattern) { ($1, $2) }
+             : svarId {-nonempty_-}list(apattern) { ($1, $2) }
 
 rightHandSide :: { Expression SyntaxName } 
               : '=' expression                { $2 }
@@ -298,10 +298,19 @@ expression :: { Expression SyntaxName }
            | expression operator expression10 { lll $ EApplication (lll $ EApplication $2 $1) $3 }
 
 expression10 :: { Expression SyntaxName }
-          -- : 'if' expression 'then' expression 'else' expression { 0 }
-             : '\\'  nonempty_list(apattern) '->' expression
+             : 'if' expression 'then' expression 'else' expression
+                  { lll $ ECase $2
+                    [ (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName "True")) []) [], $4)
+                    , (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName "False")) []) [], $6)
+                    ]
+                  }
+             | '\\'  nonempty_list(apattern) '->' expression
                   { makeLambda $2 $4 }
-          -- | 'let'
+             | 'let' '{' list(';') separated_nonempty_list(declaration, nonempty_list(';')) list(';') '}' 'in' expression
+                  {% do
+                      decls <- makeDeclarationMap $ foldr addBinding Map.empty (concat $4)
+                      return $ lll $ ELet decls $8
+                  }
              | 'case' expression 'of' '{' separated_nonempty_list(option(casealternative), ';') '}'
                   { lll $ ECase $2 (fmap fromJust $ filter isJust $ $5) }
           -- | 'do'
@@ -413,12 +422,13 @@ makeDeclarationMap mp =
       ns <- forM [1..ne] $ const generateName
       let decl = foldr
             (((.).(.)) lll ELambda)
-            (if ne == 1
-              then
+            (case ne of
+              0 -> snd (head e)
+              1 ->
                 lll $ ECase
                 (lll . EVariable . QName [] VariableName $ head ns)
                 (fmap (\(pat, e) -> (head pat, e)) e)
-              else
+              _ ->
                 lll $ ECase
                 (makeApplication (lll $ EVariable (QName ["Primitive"] ConstructorName (UserName $ replicate (ne - 1) ','))) (lll . EVariable . QName [] VariableName <$> ns))
                 (fmap (\(pat, e) -> (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName $ replicate (ne - 1) ',')) pat) [], e)) e)
