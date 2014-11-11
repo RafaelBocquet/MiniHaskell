@@ -207,6 +207,7 @@ apply_continuation n = do
     lw a0 (4 * i) sp
     sw a0 (4 * i) a3
   
+  add sp sp (4 * n)
   l rt v0
   j =<< global "_runtime_continue"
 

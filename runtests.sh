@@ -8,12 +8,12 @@ See the file README for a full copyright notice.
 Loaded: /usr/lib/spim/exceptions.s" > test-out/header
 for test in `ls tests/exec/*.hs`; do
     echo "$test : ";
-    timeout 10s ./dist/build/POPHaskell/POPHaskell $test Base.hs > test-out/`basename -s.hs $test`.s 2> /dev/null;
+    timeout 3s ./dist/build/POPHaskell/POPHaskell $test Base.hs > test-out/`basename -s.hs $test`.s 2> /dev/null;
     if [ $? -eq 0 ];
     then
         echo "Compilation ok : $test";
         echo "spim -file test-out/`basename -s.hs $test`.s > test-out/`basename -s.hs $test`.out 2> /dev/null";
-        timeout 10s spim -file test-out/`basename -s.hs $test`.s > test-out/`basename -s.hs $test`.out 2> /dev/null;
+        timeout 3s spim -file test-out/`basename -s.hs $test`.s > test-out/`basename -s.hs $test`.out 2> /dev/null;
         if [ $? -eq 0 ]
         then
            tail -n +6 test-out/`basename -s.hs $test`.out > test-out/`basename -s.hs $test`.out2;
