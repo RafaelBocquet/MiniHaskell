@@ -27,11 +27,15 @@ pretty m = do
 
 prettyCoreModule (Module md _ ds) = do
   tell (concat md)
-  forM (Map.toList ds) $ \(v, (_, e')) -> indent $ pretty $ case e' of
+  forM (Map.toList ds) $ \(v, (ty, e')) -> indent $ pretty $ case e' of
     Declaration e -> do
       tell $ show v
-      tell " = "
-      prettyCoreExpression e
+      tell " :: "
+      tell $ show ty
+      pretty $ do
+        tell $ show v
+        tell " = "
+        prettyCoreExpression e
     _ -> tell "PRIMITIVE"
 
 prettyCoreExpression (Expression _ e) = prettyCoreExpression' e

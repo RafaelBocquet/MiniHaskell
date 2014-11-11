@@ -84,7 +84,7 @@ expressionVariables (EApplication a as)     = Set.unions (atomFreeVariables a
                                                           : fmap atomFreeVariables as
                                                          )
 expressionVariables (ELet bs e)             = Set.unions ( expressionVariables e
-                                                          : fmap (\(v, vs, e) -> expressionFreeVariables e `Set.difference` Set.fromList vs) bs
+                                                          : fmap (\(v, vs, e) -> Set.insert v $ expressionFreeVariables e `Set.difference` Set.fromList vs) bs
                                                          )
 expressionVariables e@(EDataCase a alts df) = Set.unions (atomFreeVariables a
                                                           : maybe Set.empty expressionFreeVariables df

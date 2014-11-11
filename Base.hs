@@ -89,11 +89,6 @@ module Base where {
 -- ; product :: [Int] -> Int
 -- ; product xs = foldl (*) 1 xs
 
--- TODO : bind not good 
-
-; main :: IO ()
-; main = (putChar 'a') >>= (\_ -> putChar 'a') >>= (\_ -> putChar 'a')
-
 -- Any
 
 ; id :: Int -> Int

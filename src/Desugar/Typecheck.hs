@@ -319,7 +319,8 @@ typecheckDeclaration :: Declaration CoreName -> TypecheckMonad C.Declaration
 typecheckDeclaration (Declaration Nothing e)  = C.Declaration <$> typecheckExpression e
 typecheckDeclaration (Declaration (Just t) e) = do
   e' <- typecheckExpression e
-  liftUnify $ unifyType t (C.expressionType e')
+  t' <- instantiateType $ PolyType (freeTypeVariables t) t
+  liftUnify $ unifyType t' (C.expressionType e')
   return $ C.Declaration e'
 typecheckDeclaration (PrimitiveDeclaration prim) = return $ C.PrimitiveDeclaration prim
 

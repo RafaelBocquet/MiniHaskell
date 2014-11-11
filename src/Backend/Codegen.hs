@@ -99,14 +99,14 @@ codegenExpression e = do
           l a0 i
           sw a0 8 v0
           
-    codegenExpression' (ELet bs e) c sSize                    = do
+    codegenExpression' (ELet bs e) c sSize = do
       c_labels <- fmap Map.fromList $ forM bs $ \(x, _, _) -> do
         l <- newLabel
         return (x, l)
       let nVars                        = Set.fromList $ fmap (\(x, _, _) -> x) bs
           (heapSize, heapOffsets, fvs) = foldr
                                          (\(x, vs, e) (i, os, acc) ->
-                                           let fvs = Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList (x : vs) in
+                                           let fvs = Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList (vs) in
                                            foldr
                                            (\v (i, os, acc) ->
                                              (i+4, os, Map.insertWith (++) v [i] acc)

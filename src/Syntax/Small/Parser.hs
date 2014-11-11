@@ -362,7 +362,7 @@ parseIf = do
   return $ Locate (makeLocation p1 p2) $
     ECase c
       [ (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "True")) []) [], a)
-      , (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "True")) []) [], b)
+      , (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "False")) []) [], b)
       ]
 
 parseLet :: Parser (Expression SyntaxName)
