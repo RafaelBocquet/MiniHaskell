@@ -28,6 +28,7 @@ import Desugar.Typecheck
 import Desugar.Rename
 
 import System.Environment
+import System.IO
 
 import Driver.Driver
 
@@ -106,7 +107,9 @@ compileSmall fn = do
             Right ps -> do
               r <- typecheck (makeModuleMap $ primitiveModule : p1 : ps)
               r' <- compile r
-              return $ putStrLn . show $ r'
+              return $ do
+                hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
+                putStrLn.show $ r'
   where
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e
@@ -122,7 +125,9 @@ compileFull fn = do
       Right ps -> do
         r <- typecheck (makeModuleMap $ primitiveModule : ps)
         r' <- compile r
-        return $ putStrLn.show $ r'
+        return $ do
+          hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
+          putStrLn.show $ r'
   where
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e

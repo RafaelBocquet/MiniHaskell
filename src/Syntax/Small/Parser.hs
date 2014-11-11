@@ -254,10 +254,7 @@ parseSimpleExpression = do
     TkInteger i      -> do
       consumeToken
       p2 <- getPosition
-      return $ Locate (makeLocation p1 p2) $
-        EApplication
-          (Locate (makeLocation p1 p2) (EVariable (QName [] VariableName (UserName "fromInteger"))))
-          (Locate (makeLocation p1 p2) (EInteger i))
+      return $ Locate (makeLocation p1 p2) (EInteger i)
     TkString s       -> do
       consumeToken
       p2 <- getPosition
