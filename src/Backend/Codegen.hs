@@ -111,7 +111,7 @@ codegenExpression e = do
                                            (\v (i, os, acc) ->
                                              (i+4, os, Map.insertWith (++) v [i] acc)
                                            )
-                                           (i+4, Map.insert x i os, acc)
+                                           (i+8, Map.insert x i os, acc)
                                            fvs
                                          )
                                          (0, Map.empty, Map.empty)
@@ -173,7 +173,7 @@ codegenExpression e = do
         -- Move the free variables
         -- The reverse is an ugly hack...
         let fvs = reverse $ Set.toList $ expressionFreeVariables e `Set.difference` Set.fromList vs
-        forM (zip fvs [4,8..]) $ \(v, i) -> do
+        forM (zip fvs [8,12..]) $ \(v, i) -> do
           case fromJust $ Map.lookup v c' of
             Physical r -> do
               lw r i rt

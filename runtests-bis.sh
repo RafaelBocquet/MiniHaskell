@@ -9,12 +9,12 @@ Loaded: /usr/lib/spim/exceptions.s" > test-out/header
 for test in `ls tests/exec/*.hs`; do
     echo "$test : ";
     testfile=`basename $test .hs`
-    timeout 3s ./dist/build/POPHaskell/POPHaskell $test Base.hs > test-out/$testfile.s 2> /dev/null;
+    timeout 1s ./dist/build/POPHaskell/POPHaskell $test Base.hs > test-out/$testfile.s 2> /dev/null;
     if [ $? -eq 0 ];
     then
         echo "Compilation ok : $test";
         echo "spim -file test-out/$testfile.s > test-out/$testfile.out 2> /dev/null";
-        timeout 3s spim -ldata 10000000 -file test-out/$testfile.s > test-out/$testfile.out 2> /dev/null;
+        timeout 1s spim -ldata 10000000 -file test-out/$testfile.s > test-out/$testfile.out 2> /dev/null;
         if [ $? -eq 0 ]
         then
            tail -n +6 test-out/$testfile.out > test-out/$testfile.out2;

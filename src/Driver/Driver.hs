@@ -96,4 +96,5 @@ compile mods = do
       g_label <- global $ mangle name
       label closure_g_label
       word g_label
+      word (0 :: Int)
     

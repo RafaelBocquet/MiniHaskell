@@ -65,6 +65,12 @@ apply_continuation_0 = do
   -- Test if it is a function (already WHNF)
   bne v1 zero =<< global "_runtime_continue"
   -- Otherwise, eval (if it is an applied constructor in WHNF, it will call _runtime_continue)
+  -- Add an update_continuation on top of the stack
+  sub sp sp (8 :: Int)
+  l  a0 =<< global "_runtime_update"
+  sw a0 0 sp
+  sw rt 4 sp
+  
   j v0
 
 -- Function is in rt
@@ -211,6 +217,24 @@ apply_continuation n = do
   l rt v0
   j =<< global "_runtime_continue"
 
+update :: SectionMonad ()
+update = do
+  label =<< global "_runtime_update"
+  lw  v0 0 sp
+  add sp sp (4 :: Int)
+  beq rt v0 =<< global "_runtime_continue"
+  l  a0 =<< global "_runtime_indirection"
+  sw a0 0 v0
+  sw rt 4 v0
+  j =<< global "_runtime_continue"
+
+indirection :: SectionMonad ()
+indirection = do
+  word (0 :: Int)
+  label =<< global "_runtime_indirection"
+  lw rt 4 rt
+  j =<< global "_runtime_continue"
+
 data_error :: SectionMonad ()
 data_error = do
   label =<< global "_data_error"
@@ -237,6 +261,8 @@ runtime = do
     perform_io
     apply_continuation_0
     forM_ [1..maxSingleApplication] apply_continuation
+    update
+    indirection
   dataSection $ do
     label =<< global "_runtime_apply_continuation_array"
     forM_ [0..maxSingleApplication] $ \i ->
