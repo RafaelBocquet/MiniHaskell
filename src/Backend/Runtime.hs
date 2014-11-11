@@ -72,16 +72,18 @@ apply_continuation_0 = do
 -- Function is in WHNF
 apply_continuation :: Int -> SectionMonad ()
 apply_continuation n = do
-  apply_continuation <- global ("_runtime_apply_continuation_" ++ show n)
+  apply_continuation       <- global ("_runtime_apply_continuation_" ++ show n)
   apply_continuation_array <- global "_runtime_apply_continuation_array"
-  pap_label          <- newLabel
-  over_label         <- newLabel
-  over_label_2       <- newLabel
-  over_label_3       <- newLabel
-  under_label        <- newLabel
-  pap_over_label        <- newLabel
-  pap_over_label_2        <- newLabel
-  pap_under_label        <- newLabel
+  pap_label                <- newLabel
+  over_label               <- newLabel
+  over_label_2             <- newLabel
+  over_label_3             <- newLabel
+  under_label              <- newLabel
+  pap_over_label           <- newLabel
+  pap_over_label_2         <- newLabel
+  pap_under_label          <- newLabel
+  pap_under_label_2         <- newLabel
+  pap_under_label_3         <- newLabel
   label apply_continuation
 
   lw a3 0 rt
@@ -123,8 +125,6 @@ apply_continuation n = do
   j a3
   
   label under_label -- Not enough arguments
-  l v0 (-1 :: Int)
-  syscall
   -- Make a PAP with ENTRY = FAIL, CURRENT (REMAINING) ARITY = a2, 4*NVARS = 4*n, vars
   -- Need 4 * (3 + n) Heap memory
   l a0 (4 * (4 + n))
@@ -176,8 +176,39 @@ apply_continuation n = do
   j a0
 
   label pap_under_label
-  l v0 (-11 :: Int)
+  -- We have to create another pap, with more bound variables (4 + 4 * nvars + 4 * n)
+  lw a1 8 rt
+  add a0 a1 (4 * (4 + n))
+  l  v0 (9 :: Int)
   syscall
+  l  a0 =<< global "_runtime_pap"
+  sw a0 0 v0
+  lw a2 4 v0
+  add a0 a1 (4 * n)
+  sw a0 8 v0
+  lw a0 12 rt
+  sw a0 12 v0
+  l  a2 rt
+  add a2 a2 (16 :: Int)
+  l  a3 v0
+  add a3 a3 (16 :: Int)
+
+  label pap_under_label_2
+  beq a1 zero pap_under_label_3
+  lw a0 0 a2
+  sw a0 0 a3
+  sub a1 a1 (4 :: Int)
+  add a2 a2 (4 :: Int)
+  add a3 a3 (4 :: Int)
+  j pap_under_label_2
+  
+  label pap_under_label_3
+  forM_ [0..n-1] $ \i -> do
+    lw a0 (4 * i) sp
+    sw a0 (4 * i) a3
+  
+  l rt v0
+  j =<< global "_runtime_continue"
 
 data_error :: SectionMonad ()
 data_error = do
