@@ -63,12 +63,16 @@ typecheckOnlySmall fn = do
       Right t1 -> case Small.runParser t1 Small.parseModule of
         Left e -> return (putStrLn . show $ e)
         Right p1 -> do
-          ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs
-          case foldr (flip f) (Right []) ps of
-            Left e -> return (putStrLn.show $ e)
-            Right ps -> do
-              r <- typecheck (makeModuleMap $ primitiveModule : p1 : ps)
-              return $ putStrLn . show $ r
+          let tks = Full.tokenise <$> strs
+          case foldr (flip f) (Right []) tks of
+           Left e -> return (putStrLn.show $ e)
+           Right tks -> do
+             ps <- (Full.runParse . Full.parseModule) `mapM` tks
+             case foldr (flip f) (Right []) ps of
+              Left e -> return (putStrLn.show $ e)
+              Right ps -> do
+                r <- typecheck (makeModuleMap $ primitiveModule : p1 : ps)
+                return $ putStrLn . show $ r
   where
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e
@@ -80,12 +84,16 @@ typecheckOnlyFull fn = do
   putStr "\t"
   strs <- readFile `mapM` fn
   flip evalState 0 $ do
-    ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs
-    case foldr (flip f) (Right []) ps of
-      Left e -> return (putStrLn.show $ e)
-      Right ps -> do
-        r <- typecheck (makeModuleMap $ primitiveModule : ps)
-        return $ putStrLn.show $ r
+    let tks = Full.tokenise <$> strs
+    case foldr (flip f) (Right []) tks of
+     Left e -> return (putStrLn.show $ e)
+     Right tks -> do
+       ps <- (Full.runParse . Full.parseModule) `mapM` tks
+       case foldr (flip f) (Right []) ps of
+        Left e -> return (putStrLn.show $ e)
+        Right ps -> do
+          r <- typecheck (makeModuleMap $ primitiveModule : ps)
+          return $ putStrLn.show $ r
   where
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e
@@ -101,15 +109,19 @@ compileSmall fn = do
       Right t1 -> case Small.runParser t1 Small.parseModule of
         Left e -> return (putStrLn . show $ e)
         Right p1 -> do
-          ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs
-          case foldr (flip f) (Right []) ps of
-            Left e -> return (putStrLn.show $ e)
-            Right ps -> do
-              r <- typecheck (makeModuleMap $ primitiveModule : p1 : ps)
-              r' <- compile r
-              return $ do
-                hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
-                putStrLn.show $ r'
+          let tks = Full.tokenise <$> strs
+          case foldr (flip f) (Right []) tks of
+           Left e -> return (putStrLn.show $ e)
+           Right tks -> do
+             ps <- (Full.runParse . Full.parseModule) `mapM` tks
+             case foldr (flip f) (Right []) ps of
+              Left e -> return (putStrLn.show $ e)
+              Right ps -> do
+                r <- typecheck (makeModuleMap $ primitiveModule : p1 : ps)
+                r' <- compile r
+                return $ do
+                  hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
+                  putStrLn.show $ r'
   where
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e
@@ -119,15 +131,19 @@ compileFull :: [String] -> IO ()
 compileFull fn = do
   strs <- readFile `mapM` fn
   flip evalState 0 $ do
-    ps <- (Full.runParse . Full.parseModule . Full.tokenise) `mapM` strs
-    case foldr (flip f) (Right []) ps of
-      Left e -> return (putStrLn.show $ e)
-      Right ps -> do
-        r <- typecheck (makeModuleMap $ primitiveModule : ps)
-        r' <- compile r
-        return $ do
-          hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
-          putStrLn.show $ r'
+    let tks = Full.tokenise <$> strs
+    case foldr (flip f) (Right []) tks of
+     Left e -> return (putStrLn.show $ e)
+     Right tks -> do
+       ps <- (Full.runParse . Full.parseModule) `mapM` tks
+       case foldr (flip f) (Right []) ps of
+        Left e -> return (putStrLn.show $ e)
+        Right ps -> do
+          r <- typecheck (makeModuleMap $ primitiveModule : ps)
+          r' <- compile r
+          return $ do
+            hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
+            putStrLn.show $ r'
   where
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e

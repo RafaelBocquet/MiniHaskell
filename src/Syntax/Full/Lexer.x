@@ -2,9 +2,13 @@
 module Syntax.Full.Lexer where
 
 import Syntax.Full.Token
+import Syntax.Location
+
+import Data.Char (isAlpha)
+
 }
 
-%wrapper "posn"
+%wrapper "monad"
 
 -- Character classes
 
@@ -34,64 +38,97 @@ $identifierChar = [a-zA-Z0-9_\']
 \-\-(. # $symbolChar)(. # $newline)*$newline;
 
 -- Reserved symbols
-".."       { const (const TkDoubleDot) }
-"::"       { const (const TkDoubleColon) }
-"="        { const (const TkEqual) }
-\\         { const (const TkLambda) }
-"|"        { const (const TkPipe) }
-"<-"       { const (const TkLArrow) }
-"->"       { const (const TkRArrow) }
-"@"        { const (const TkAt) }
-"~"        { const (const TkTilde) }
-"=>"       { const (const TkFatArrow) }
+".."       { alexSimpleToken TkDoubleDot }
+"::"       { alexSimpleToken TkDoubleColon }
+"="        { alexSimpleToken TkEqual }
+\\         { alexSimpleToken TkLambda }
+"|"        { alexSimpleToken TkPipe }
+"<-"       { alexSimpleToken TkLArrow }
+"->"       { alexSimpleToken TkRArrow }
+"@"        { alexSimpleToken TkAt }
+"~"        { alexSimpleToken TkTilde }
+"=>"       { alexSimpleToken TkFatArrow }
 
 -- Reserved keywords
 
-"case"     { const (const TkCase) }
-"class"    { const (const TkClass) }
-"data"     { const (const TkData) }
-"default"  { const (const TkDefault) }
-"deriving" { const (const TkDeriving) }
-"do"       { const (const TkDo) }
-"else"     { const (const TkElse) }
+"case"     { alexSimpleToken TkCase }
+"class"    { alexSimpleToken TkClass }
+"data"     { alexSimpleToken TkData }
+"default"  { alexSimpleToken TkDefault }
+"deriving" { alexSimpleToken TkDeriving }
+"do"       { alexSimpleToken TkDo }
+"else"     { alexSimpleToken TkElse }
  
-"if"       { const (const TkIf) }
-"import"   { const (const TkImport) }
-"in"       { const (const TkIn) }
-"infix"    { const (const TkInfix) }
-"infixl"   { const (const TkInfixl) }
-"infixr"   { const (const TkInfixr) }
-"instance" { const (const TkInstance) }
+"if"       { alexSimpleToken TkIf }
+"import"   { alexSimpleToken TkImport }
+"in"       { alexSimpleToken TkIn }
+"infix"    { alexSimpleToken TkInfix }
+"infixl"   { alexSimpleToken TkInfixl }
+"infixr"   { alexSimpleToken TkInfixr }
+"instance" { alexSimpleToken TkInstance }
  
-"let"      { const (const TkLet) }
-"module"   { const (const TkModule) }
-"newtype"  { const (const TkNewtype) }
-"of"       { const (const TkOf) }
-"then"     { const (const TkThen) }
-"type"     { const (const TkType) }
-"where"    { const (const TkWhere) }
-"_"        { const (const TkUnderscore) }
+"let"      { alexSimpleToken TkLet }
+"module"   { alexSimpleToken TkModule }
+"newtype"  { alexSimpleToken TkNewtype }
+"of"       { alexSimpleToken TkOf }
+"then"     { alexSimpleToken TkThen }
+"type"     { alexSimpleToken TkType }
+"where"    { alexSimpleToken TkWhere }
+"_"        { alexSimpleToken TkUnderscore }
 
-\(          { const (const TkLParen) }
-\)          { const (const TkRParen) }
-\,          { const (const TkComma) }
-\;          { const (const TkSemiColon) }
-\[          { const (const TkLBracket) }
-\]          { const (const TkRBracket) }
-`           { const (const TkBackTick) }
-\{          { const (const TkLBrace) }
-\}          { const (const TkRBrace) }
+\(          { alexSimpleToken TkLParen }
+\)          { alexSimpleToken TkRParen }
+\,          { alexSimpleToken TkComma }
+\;          { alexSimpleToken TkSemiColon }
+\[          { alexSimpleToken TkLBracket }
+\]          { alexSimpleToken TkRBracket }
+`           { alexSimpleToken TkBackTick }
+\{          { alexSimpleToken TkLBrace }
+\}          { alexSimpleToken TkRBrace }
 
-@moduleName @varId { const (TkIdentifier []) }
-@moduleName @conId { const (TkIdentifier []) }
-@moduleName @symId { const (TkIdentifier []) }
+@moduleName @varId { alexToken (\(splitModuleName -> s) -> TkIdentifier (init s) (last s)) }
+@moduleName @conId { alexToken (\(splitModuleName -> s) -> TkIdentifier (init s) (last s)) }
+@moduleName @symId { alexToken (\(splitModuleName -> s) -> TkIdentifier (init s) (last s)) }
 
-@integer    { const (TkInteger . read) }
-\'a\'       { const (const $ TkChar 'a') }
+@integer    { alexToken (const (TkInteger 0)) }
+\'a\'       { alexSimpleToken (TkChar 'a') }
 
 {
 
-ar = alexScanTokens "ok"
-tokenise = alexScanTokens
+data AlexUserState = AlexUserState
+
+alexInitUserState :: AlexUserState
+alexInitUserState = AlexUserState
+
+alexEOF = return (Token TkEOF undefined undefined)
+
+splitModuleName :: String -> [String]
+splitModuleName = uncurry (:) . splitModuleName'
+  where
+    splitModuleName' "."                          = (".", [])
+    splitModuleName' ('.':xs) | isAlpha (head xs) = ([], splitModuleName xs)
+                              | otherwise         = (':':xs, [])
+    splitModuleName' (x:xs)                       = let (ys, zs) = splitModuleName' xs in (x:ys, zs)
+    splitModuleName' []                           = ([], [])
+
+alexToken :: (String -> Token') -> AlexAction Token
+alexToken t (AlexPn a r c, _, _, s) l  = do
+  return (Token (t $ take l s) (Location (Position a r c) l) (c))
+
+alexSimpleToken :: Token' -> AlexAction Token
+alexSimpleToken = alexToken . const
+
+alexScanTokens :: Alex [Token]
+alexScanTokens = do
+  tk <- alexMonadScan
+  case tk of
+   (tokenToken -> TkEOF) ->
+     return []
+   _ -> do
+     tks <- alexScanTokens
+     return (tk : tks)
+
+tokenise :: String -> Either String [Token]
+tokenise s = runAlex s alexScanTokens
 
 }

@@ -25,7 +25,7 @@ import Debug.Trace
 }
 
 %name parseModule module
-%tokentype { Token' }
+%tokentype { Token }
 
 %monad { ParseMonad }
 %error { parseError }
@@ -41,57 +41,57 @@ import Debug.Trace
   tqsymId           { t | isQSymbolIdentifier t }
   tqsymconId        { t | isQSymbolConstructorIdentifier t }
 
-  integer           { TkInteger _ }
-  char              { TkChar _ }
-  string            { TkString _ }
+  integer           { (tokenToken -> TkInteger _) }
+  char              { (tokenToken -> TkChar _) }
+  string            { (tokenToken -> TkString _) }
 
 
-  'case'            { TkCase }
-  'class'           { TkClass }
-  'data'            { TkData }
-  'default'         { TkDefault }
-  'deriving'        { TkDeriving }
-  'do'              { TkDo }
-  'else'            { TkElse }
+  'case'            { (tokenToken -> TkCase) }
+  'class'           { (tokenToken -> TkClass) }
+  'data'            { (tokenToken -> TkData) }
+  'default'         { (tokenToken -> TkDefault) }
+  'deriving'        { (tokenToken -> TkDeriving) }
+  'do'              { (tokenToken -> TkDo) }
+  'else'            { (tokenToken -> TkElse) }
 
-  'if'              { TkIf }
-  'import'          { TkImport }
-  'in'              { TkIn }
-  'infix'           { TkInfix }
-  'infixl'          { TkInfixl }
-  'infixr'          { TkInfixr }
-  'instance'        { TkInstance }
+  'if'              { (tokenToken -> TkIf) }
+  'import'          { (tokenToken -> TkImport) }
+  'in'              { (tokenToken -> TkIn) }
+  'infix'           { (tokenToken -> TkInfix) }
+  'infixl'          { (tokenToken -> TkInfixl) }
+  'infixr'          { (tokenToken -> TkInfixr) }
+  'instance'        { (tokenToken -> TkInstance) }
 
-  'let'             { TkLet }
-  'module'          { TkModule }
-  'newtype'         { TkNewtype }
-  'of'              { TkOf }
-  'then'            { TkThen }
-  'type'            { TkType }
-  'where'           { TkWhere }
-  '_'               { TkUnderscore }
+  'let'             { (tokenToken -> TkLet) }
+  'module'          { (tokenToken -> TkModule) }
+  'newtype'         { (tokenToken -> TkNewtype) }
+  'of'              { (tokenToken -> TkOf) }
+  'then'            { (tokenToken -> TkThen) }
+  'type'            { (tokenToken -> TkType) }
+  'where'           { (tokenToken -> TkWhere) }
+  '_'               { (tokenToken -> TkUnderscore) }
 
-  '..'              { TkDoubleDot }
-  ':'               { TkColon }
-  '::'              { TkDoubleColon }
-  '='               { TkEqual }
-  '\\'              { TkLambda }
-  '|'               { TkPipe }
-  '<-'              { TkLArrow }
-  '->'              { TkRArrow }
-  '@'               { TkAt }
-  '~'               { TkTilde }
-  '=>'              { TkFatArrow }
+  '..'              { (tokenToken -> TkDoubleDot) }
+  ':'               { (tokenToken -> TkColon) }
+  '::'              { (tokenToken  -> TkDoubleColon) }
+  '='               { (tokenToken -> TkEqual) }
+  '\\'              { (tokenToken -> TkLambda) }
+  '|'               { (tokenToken -> TkPipe) }
+  '<-'              { (tokenToken  -> TkLArrow) }
+  '->'              { (tokenToken  -> TkRArrow) }
+  '@'               { (tokenToken -> TkAt) }
+  '~'               { (tokenToken -> TkTilde) }
+  '=>'              { (tokenToken  -> TkFatArrow) }
 
-  '('               { TkLParen }
-  ')'               { TkRParen }
-  ','               { TkComma }
-  ';'               { TkSemiColon }
-  '['               { TkLBracket }
-  ']'               { TkRBracket }
-  '`'               { TkBackTick }
-  '{'               { TkLBrace }
-  '}'               { TkRBrace }
+  '('               { (tokenToken -> TkLParen) }
+  ')'               { (tokenToken -> TkRParen) }
+  ','               { (tokenToken -> TkComma) }
+  ';'               { (tokenToken -> TkSemiColon) }
+  '['               { (tokenToken -> TkLBracket) }
+  ']'               { (tokenToken -> TkRBracket) }
+  '`'               { (tokenToken -> TkBackTick) }
+  '{'               { (tokenToken -> TkLBrace) }
+  '}'               { (tokenToken -> TkRBrace) }
 
 %nonassoc 'if' 'then' 'else' '\\' '->' 'let' 'in'
 %nonassoc tvarId tconId tsymId tsymconId tqvarId tqconId tqsymId tqsymconId '`'
