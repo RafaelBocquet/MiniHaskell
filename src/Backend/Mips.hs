@@ -103,6 +103,7 @@ data MipsInstruction = Label Address
                      | Sge MipsRegister MipsRegister MipsRegister
 
                      | Asciiz String
+                     | Comment String
 
                      | Syscall
 
@@ -145,6 +146,7 @@ instance Show MipsInstruction where
   show (Sge r a b)                = "\tsge " ++ show r ++ ", " ++ show a ++ ", " ++ show b ++ "\n"
 
   show (Asciiz s)                 = "\t.asciiz " ++ show s ++ "\n"
+  show (Comment s)                = "#" ++ s ++ "\n"
 
   show Syscall                    = "\tsyscall\n"
 
@@ -274,6 +276,9 @@ sge r a b = tell . Instruction $ Sge r a b
 
 asciiz :: String -> SectionMonad ()
 asciiz s = tell . Instruction $ Asciiz s
+
+comment :: String -> SectionMonad ()
+comment s = tell . Instruction $ Comment s
 
 syscall :: SectionMonad ()
 syscall = (tell . Instruction) Syscall

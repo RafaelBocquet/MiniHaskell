@@ -159,6 +159,7 @@ codegenExpression e = do
       -- Add the closure code
       forM_ bs $ \(x, vs, e) -> do
         word (length vs) -- Arity info for apply functions. 0 = THUNK = PARTIAL ?
+        comment $ show x
         label $ fromJust $ Map.lookup x c_labels
         -- rt is now a pointer to the closure
         -- arguments (vs are on the stack)

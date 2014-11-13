@@ -50,6 +50,7 @@ codegenPrimitive p | p `elem` [S.PrimitiveIntAdd, S.PrimitiveIntSub, S.Primitive
 codegenPrimitive S.PrimitiveIntNegate = do
   lw t0 0 sp
   sub t0 zero t0
+  add sp sp (4 :: Int)
   l a0 (12 :: Int)
   l v0 (9 :: Int)
   syscall

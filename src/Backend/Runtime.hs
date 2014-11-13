@@ -87,9 +87,10 @@ apply_continuation n = do
   under_label              <- newLabel
   pap_over_label           <- newLabel
   pap_over_label_2         <- newLabel
+  pap_over_label_3         <- newLabel
   pap_under_label          <- newLabel
-  pap_under_label_2         <- newLabel
-  pap_under_label_3         <- newLabel
+  pap_under_label_2        <- newLabel
+  pap_under_label_3        <- newLabel
   label apply_continuation
 
   lw a3 0 rt
@@ -142,7 +143,7 @@ apply_continuation n = do
   sw a2 4 v0
   l  a0 (4 * n)
   sw a0 8 v0
-  sw a3 12 v0
+  sw rt 12 v0
   forM [0..n-1] $ \i -> do
     lw a0 (4*i) sp
     sw a0 (16+4*i) v0
@@ -162,7 +163,31 @@ apply_continuation n = do
   bgtz a2 pap_under_label
 
   -- -- Either : Exact case : increment stack with all remaining arguments, and call f
-  -- --          Over case  : idem, then call apply_continuation with less args
+  -- --          Over case  : idem, then call apply_continuation with less args (-a2 args)
+  -- First eval with v1 stack args (v1 < n)
+  sub sp sp (4 :: Int)
+  l a1 (0 :: Int)
+  forM_ [0..n-1] $ \_ -> do
+    beq a1 v1 pap_over_label_3
+    lw a0 4 sp
+    sw a0 0 sp
+    add a1 a1 (1 :: Int)
+    add sp sp (4 :: Int)
+  label pap_over_label_3
+  -- Setup continuation (apply (n - v1))
+  l a1 apply_continuation_array
+  sub a1 a1 a2
+  sub a1 a1 a2
+  sub a1 a1 a2
+  sub a1 a1 a2
+  lw a1 0 a1
+  sw a1 0 sp
+  sub sp sp v1
+  sub sp sp v1
+  sub sp sp v1
+  sub sp sp v1
+
+  -- Setup pap arguments
   lw  a0 8  rt
   add v0 rt (16 :: Int)
   add v0 v0 a0
@@ -178,29 +203,30 @@ apply_continuation n = do
   label pap_over_label_2
 
   -- -- Call the function
-  lw a0 12 rt
-  j a0
+  lw rt 12 rt
+  lw a3 0 rt
+  j  a3
 
   label pap_under_label
-  -- We have to create another pap, with more bound variables (4 + 4 * nvars + 4 * n)
-  lw a1 8 rt
-  add a0 a1 (4 * (4 + n))
-  l  v0 (9 :: Int)
+  -- We have to create another pap, with more bound variables (16 + 4 * nvars + 4 * n)
+  lw a1 8 rt                                   -- get 4*current nvars
+  add a0 a1 (4 * (4 + n))                      -- add needed space
+  l  v0 (9 :: Int)                              -- allocate
   syscall
   l  a0 =<< global "_runtime_pap"
-  sw a0 0 v0
-  lw a2 4 v0
-  add a0 a1 (4 * n)
+  sw a0 0 v0                                   -- store _runtime_pap
+  sw a2 4 v0                                   -- store arity ? TOCHECK
+  add a0 a1 (4 * n)                            -- 4 * nvars
   sw a0 8 v0
-  lw a0 12 rt
+  lw a0 12 rt                                  -- function
   sw a0 12 v0
   l  a2 rt
-  add a2 a2 (16 :: Int)
+  add a2 a2 (16 :: Int)                         -- a2 -> rt.vars
   l  a3 v0
-  add a3 a3 (16 :: Int)
+  add a3 a3 (16 :: Int)                         -- a3 -> v0.vars
 
   label pap_under_label_2
-  beq a1 zero pap_under_label_3
+  beq a1 zero pap_under_label_3 -- copy a0 / 4 vars
   lw a0 0 a2
   sw a0 0 a3
   sub a1 a1 (4 :: Int)
@@ -209,11 +235,11 @@ apply_continuation n = do
   j pap_under_label_2
   
   label pap_under_label_3
-  forM_ [0..n-1] $ \i -> do
+  forM_ [0..n-1] $ \i -> do -- copy n vars from stack
     lw a0 (4 * i) sp
     sw a0 (4 * i) a3
   
-  add sp sp (4 * n)
+  add sp sp (4 * n) -- set sp
   l rt v0
   j =<< global "_runtime_continue"
 
