@@ -457,7 +457,7 @@ typecheckTypeDeclarations md ds = do
   return (Map.fromList . fmap fromJust . filter isJust $ fst <$> ds', Map.unions $ snd <$> ds')
 
 typecheckModule :: Module CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName), C.Module)
-typecheckModule (Module md is ds bs) = do
+typecheckModule (Module md is ds cs bs) = do
   (dds', ds') <- typecheckTypeDeclarations md ds
   bs' <- globalBindMany ds' $ typecheckBindings md bs
   return (Map.union ds' $ Map.map fst . Map.mapKeys (QName md VariableName) $ bs', C.Module md dds' bs')

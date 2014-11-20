@@ -165,7 +165,7 @@ parseModule :: Parser (Module SyntaxName)
 parseModule = do
   bs <- makeBindings =<< parseMany parseDefinition (isNotToken TkEOF)
   expectToken TkEOF
-  return $ Module ["Main"] (Set.singleton ["Primitive"]) Map.empty bs
+  return $ Module ["Main"] (Set.singleton ["Primitive"]) Map.empty Map.empty bs
 
 parseDefinition :: Parser (Binding SyntaxName)
 parseDefinition = do

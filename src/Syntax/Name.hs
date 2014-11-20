@@ -25,6 +25,7 @@ data NameSpace = VariableName
                | ConstructorName
                | TypeVariableName
                | TypeConstructorName
+               | TypeClassName
                deriving (Eq, Ord, Show)
 
 data QName n = QName [String] NameSpace n

@@ -216,6 +216,13 @@ renameDataConstructor md (DataConstructor n ts) m = do
     return (ts', c)
   return (DataConstructor n' ts', c')
 
+renameClassDeclaration :: ModuleName -> RenamingIn (ClassDeclaration SyntaxName) (ClassDeclaration CoreName) c
+renameClassDeclaration md (ClassDeclaration v ds) m = do
+  (v', (ds', m')) <- renameTypeVariableName md v
+                     $ renameMap md VariableName renamePolyType ds
+                     $ m
+  return (ClassDeclaration v' ds', m')
+
 renameTypeDeclaration :: ModuleName -> RenamingIn (TypeDeclaration SyntaxName) (TypeDeclaration CoreName) c
 renameTypeDeclaration md (DataDeclaration tvs dcs) m           = do
   (tvs', (dcs', c)) <- renameTypeVariableNames [] tvs $ renameMany (renameDataConstructor md) dcs m
@@ -244,10 +251,16 @@ renameMap md ns f mp m = do
 renameDeclarations :: ModuleName -> RenamingIn (DeclarationMap SyntaxName) (DeclarationMap CoreName) c
 renameDeclarations md = renameMap md VariableName renameDeclaration
 
+renameClassDeclarations :: ModuleName -> RenamingIn (ClassDeclarationMap SyntaxName) (ClassDeclarationMap CoreName) c
+renameClassDeclarations md = renameMapIn md TypeClassName (renameClassDeclaration md)
+
 renameTypeDeclarations :: ModuleName -> RenamingIn (TypeDeclarationMap SyntaxName) (TypeDeclarationMap CoreName) c
 renameTypeDeclarations md = renameMapIn md TypeConstructorName (renameTypeDeclaration md)
 
 renameModule :: Module SyntaxName -> RenameMonad (RenameMap, Module CoreName)
-renameModule (Module mn is ds bs) = do
-  (ds', (bs', rMap)) <- renameTypeDeclarations mn ds $ renameDeclarations mn bs $ ask
-  return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' bs')
+renameModule (Module mn is ds cs bs) = do
+  (ds', (cs', (bs', rMap))) <- renameTypeDeclarations mn ds
+                        $ renameClassDeclarations mn cs
+                        $ renameDeclarations mn bs
+                        $ ask
+  return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' cs' bs')

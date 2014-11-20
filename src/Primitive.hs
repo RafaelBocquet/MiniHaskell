@@ -39,6 +39,7 @@ primitiveModule = Module
               , DataDeclaration (take n tupleVariables) [DataConstructor (UserName (replicate (n-1) ',')) $ TyVariable <$> take n tupleVariables]
               )
             ) <$> [2..4])
+  , moduleClassDeclarations = Map.empty
   , moduleDeclarations     = Map.fromList
       [ (UserName "add_prim",    PrimitiveDeclaration PrimitiveIntAdd)
       , (UserName "sub_prim",    PrimitiveDeclaration PrimitiveIntSub)

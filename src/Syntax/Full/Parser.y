@@ -194,11 +194,12 @@ importDeclaration :: { TopDeclaration }
 topDeclaration :: { [TopDeclaration] }
                : 'type' simpletype '=' type
                     { [TopTypeDeclaration (fst $2) (TypeDeclaration (snd $2) $4)] }
-               | 'data' {-context-} simpletype '=' separated_nonempty_list(constructor, '|')
+               | 'data' {- context -} simpletype '=' separated_nonempty_list(constructor, '|')
                     { [TopTypeDeclaration (fst $2) (DataDeclaration (snd $2) $4)] }
                --| 'newtype' context simpletype '=' conId list(atype) { 0 }
-               --| 'class' simplecontext conId varId option(preceded('where', delimited('{', separated_list(classDeclaration, nonempty_list(';')), '}'))) { 0 }
-               --| 'instance' simplecontext qconId instance option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}'))) { 0 }
+               | 'class' {- simplecontext -} conId varId option(preceded('where', delimited('{', separated_list(classDeclaration, nonempty_list(';')), '}')))
+                    { [TopClassDeclaration $2 (ClassDeclaration $3 $ maybe Map.empty (Map.fromList . concat) $4 )] }
+               | 'instance' {- simplecontext -} qconId instance option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}'))) { undefined }
             -- | 'default' { 0 }
                | declaration { fmap TopVariableDeclaration $1 }
 
@@ -274,9 +275,8 @@ class : qconId varId                      { 0 }
 
 simpleclass : qconId varId                      { 0 }
 
-classDeclaration : genDeclaration             { 0 }
-                 | leftHandSide rightHandSide { 0 }
-                 | varId rightHandSide        { 0 }
+classDeclaration :: { [ (SyntaxName, MonoType SyntaxName) ] }
+                 : separated_nonempty_list(svarId, ',') '::' typeSignature { fmap (\x -> (x, $3)) $1 }
 
 instance : gtycon                                                { 0 }
          | '(' gtycon list(varId) ')'                            { 0 }
@@ -284,8 +284,8 @@ instance : gtycon                                                { 0 }
          | '[' varId ']'                                         { 0 }
          | '(' qtyvarId '->' qtyvarId ')'                        { 0 }
 
-instanceDeclaration : leftHandSide rightHandSide { 0 }
-                    | varId rightHandSide        { 0 }
+instanceDeclaration : leftHandSide rightHandSide { undefined }
+--                  | varId rightHandSide        { 0 }
 
 -- Expressions
 
@@ -441,12 +441,13 @@ makeDeclarationMap mp =
 data TopDeclaration = ImportDeclaration ModuleName
                     | TopVariableDeclaration VariableDeclaration
                     | TopTypeDeclaration SyntaxName (TypeDeclaration SyntaxName)
+                    | TopClassDeclaration SyntaxName (ClassDeclaration SyntaxName)
 
 makeModule :: ModuleName -> [TopDeclaration] -> ParseMonad (Module SyntaxName)
 makeModule n tds = do
   let (m, bs) = foldl
         (flip addTopDeclaration)
-        (Module n Set.empty Map.empty Map.empty, Map.empty)
+        (Module n Set.empty Map.empty Map.empty Map.empty, Map.empty)
         tds
   ds <- makeDeclarationMap bs
   return $ m { moduleDeclarations = ds }
@@ -454,6 +455,7 @@ makeModule n tds = do
     addTopDeclaration (ImportDeclaration impName) (m, bs) = (m { moduleImport = Set.insert impName (moduleImport m) }, bs)
     addTopDeclaration (TopVariableDeclaration v) (m, bs)  = (m, addBinding v bs)
     addTopDeclaration (TopTypeDeclaration a b) (m, bs)    = (m { moduleTypeDeclarations = Map.insert a b (moduleTypeDeclarations m) }, bs)
+    addTopDeclaration (TopClassDeclaration a b) (m, bs)   = (m { moduleClassDeclarations = Map.insert a b (moduleClassDeclarations m) }, bs)
 
 parseError x = error $ "Parse error : " ++ show x
 

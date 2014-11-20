@@ -40,17 +40,15 @@ data Char = Char Char_prim
 -- ; chr (Int a) = Char (chr_prim a)
 -- ; ord (Char a) = Int (ord_prim a)
 
--- Type class
---; class Eq Char where {
---  ; (==) (Char a) (Char b) = charEQ_prim a b
---  ; (/=) (Char a) (Char b) = charNE_prim a b
---; }
---; class Ord Char where
---  ; (<)  (Char a) (Char b) = charLT_prim a b
---  ; (<=) (Char a) (Char b) = charLE_prim a b
---  ; (>)  (Char a) (Char b) = charGT_prim a b
---  ; (>=) (Char a) (Char b) = charGE_prim a b
---; }
+class Eq a where
+ (==) :: Char -> Char -> Bool
+ -- Char a /= Char b = charNE_prim a b
+ 
+-- class Ord Char where
+--  Char a < Char b = charLT_prim a b
+--  Char a <= Char b = charLE_prim a b
+--  Char a > Char b = charGT_prim a b
+--  Char a >= Char b = charGE_prim a b
 
 -- Maybe
 

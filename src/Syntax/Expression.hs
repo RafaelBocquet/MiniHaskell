@@ -127,3 +127,7 @@ data TypeDeclaration n        = DataDeclaration [n] [DataConstructor n]
                               | TypeDeclaration [n] (MonoType n)
                               deriving (Show)
 type TypeDeclarationMap n     = Map n (TypeDeclaration n)
+
+data ClassDeclaration n    = ClassDeclaration n (Map n (MonoType n))
+                           deriving (Show)
+type ClassDeclarationMap n = Map n (ClassDeclaration n)
