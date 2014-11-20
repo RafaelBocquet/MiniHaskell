@@ -2,6 +2,7 @@
 module Syntax.Full.Lexer where
 
 import Syntax.Full.Token
+import Syntax.Full.Layout
 import Syntax.Location
 
 import Data.Char (isAlpha)
@@ -100,7 +101,9 @@ data AlexUserState = AlexUserState
 alexInitUserState :: AlexUserState
 alexInitUserState = AlexUserState
 
-alexEOF = return (Token TkEOF undefined undefined)
+alexEOF = do
+  (AlexPn a r c, _, _, _) <- alexGetInput
+  return (Token TkEOF (Location (Position a r c) 0) c)
 
 splitModuleName :: String -> [String]
 splitModuleName = uncurry (:) . splitModuleName'
@@ -113,7 +116,7 @@ splitModuleName = uncurry (:) . splitModuleName'
 
 alexToken :: (String -> Token') -> AlexAction Token
 alexToken t (AlexPn a r c, _, _, s) l  = do
-  return (Token (t $ take l s) (Location (Position a r c) l) (c))
+  return (Token (t $ take l s) (Location (Position a r c) l) c)
 
 alexSimpleToken :: Token' -> AlexAction Token
 alexSimpleToken = alexToken . const
@@ -122,13 +125,13 @@ alexScanTokens :: Alex [Token]
 alexScanTokens = do
   tk <- alexMonadScan
   case tk of
-   (tokenToken -> TkEOF) ->
-     return []
+   t@(tokenToken -> TkEOF) ->
+     return [t]
    _ -> do
      tks <- alexScanTokens
      return (tk : tks)
 
 tokenise :: String -> Either String [Token]
-tokenise s = runAlex s alexScanTokens
+tokenise s = makeLayout `fmap` runAlex s alexScanTokens
 
 }

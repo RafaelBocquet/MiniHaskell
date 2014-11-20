@@ -35,6 +35,8 @@ import Driver.Driver
 import Backend.Mips
 import Backend.Runtime
 
+import Syntax.Full.Layout
+
 isFlag :: String -> Bool
 isFlag ('-':'-':_) = True
 isFlag _           = False
@@ -142,7 +144,7 @@ compileFull fn = do
           r <- typecheck (makeModuleMap $ primitiveModule : ps)
           r' <- compile r
           return $ do
-            hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
+            -- hPutStrLn stderr . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
             putStrLn.show $ r'
   where
     f (Left e) _           = Left e

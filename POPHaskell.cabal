@@ -14,7 +14,8 @@ cabal-version:       >=1.10
 executable POPHaskell
   main-is:             Main.hs
   other-modules:       Syntax.Full.Lexer,
-                       Syntax.Full.Parser
+                       Syntax.Full.Parser,
+                       Syntax.Full.Layout
   other-extensions:    RankNTypes
   build-depends:       base,
                        containers,
@@ -23,4 +24,4 @@ executable POPHaskell
   hs-source-dirs:      src
   default-language:    Haskell2010
   build-tools:         alex, happy
-  extensions:          ViewPatterns
+  default-extensions:  ViewPatterns

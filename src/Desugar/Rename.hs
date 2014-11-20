@@ -174,11 +174,6 @@ renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
     renameExpression' (ETuple xs)              = do
       xs' <- renameExpression `mapM` xs
       return $ ETuple xs'
-    --renameExpression' (EIf c a b)              = do
-    --  c' <- renameExpression c
-    --  a' <- renameExpression a
-    --  b' <- renameExpression b
-    --  return $ EIf c' a' b'
     renameExpression' (ELet bs e)              = do
       (bs', e') <- renameDeclarations [] bs (renameExpression e)
       return $ ELet bs' e'
@@ -186,13 +181,6 @@ renameExpression (Locate loc e) = Locate loc <$> renameExpression' e
       e' <- renameExpression e
       pats' <- forM pats $ \(pat, pate) -> renamePattern pat $ renameExpression pate
       return $ ECase e' pats'
-
-
-    --renameExpression' (EListCase e nil x xs r) = do
-    --  e' <- renameExpression e
-    --  nil' <- renameExpression nil
-    --  (x', (xs', r')) <- renameVariableName [] x $ renameVariableName [] xs $ renameExpression r
-    --  return $ EListCase e' nil' x' xs' r'
 
 renameDeclaration :: Renaming (Declaration SyntaxName) (Declaration CoreName)
 renameDeclaration (Declaration Nothing e)     = Declaration Nothing <$> renameExpression e

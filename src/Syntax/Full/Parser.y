@@ -93,6 +93,8 @@ import Debug.Trace
   '{'               { (tokenToken -> TkLBrace) }
   '}'               { (tokenToken -> TkRBrace) }
 
+  EOF               { (tokenToken -> TkEOF) }
+
 %nonassoc 'if' 'then' 'else' '\\' '->' 'let' 'in'
 %nonassoc tvarId tconId tsymId tsymconId tqvarId tqconId tqsymId tqsymconId '`'
 
@@ -170,7 +172,7 @@ qsconId : qconId { $1 }
        | delimited('(', qsymconId, ')') { $1 }
 -- 
 
-module : moduleHeader moduleBody {% makeModule $1 $2 }
+module : moduleHeader moduleBody EOF {% makeModule $1 $2 }
 
 moduleHeader : 'module' moduleName 'where' { $2 }
              |                             { ["Main"] }

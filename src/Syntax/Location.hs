@@ -24,6 +24,9 @@ data Location = Location
   }
   deriving(Show)
 
+locationEnd :: Location -> Position
+locationEnd (Location (Position a r c) l) = Position (a + l) r (c + l)
+
 class Located a where
   locate :: a -> Location
 
