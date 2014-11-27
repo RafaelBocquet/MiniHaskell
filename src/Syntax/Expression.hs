@@ -131,3 +131,7 @@ type TypeDeclarationMap n     = Map n (TypeDeclaration n)
 data ClassDeclaration n    = ClassDeclaration n (Map n (MonoType n))
                            deriving (Show)
 type ClassDeclarationMap n = Map n (ClassDeclaration n)
+
+data InstanceDeclaration n    = InstanceDeclaration [n] (DeclarationMap n)
+                              deriving (Show)
+type InstanceDeclarationMap n = Map (QName n, MonoType n) (InstanceDeclaration n)  

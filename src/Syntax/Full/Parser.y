@@ -196,10 +196,11 @@ topDeclaration :: { [TopDeclaration] }
                     { [TopTypeDeclaration (fst $2) (TypeDeclaration (snd $2) $4)] }
                | 'data' {- context -} simpletype '=' separated_nonempty_list(constructor, '|')
                     { [TopTypeDeclaration (fst $2) (DataDeclaration (snd $2) $4)] }
-               --| 'newtype' context simpletype '=' conId list(atype) { 0 }
+               -- | 'newtype' context simpletype '=' conId list(atype) { 0 }
                | 'class' {- simplecontext -} conId varId option(preceded('where', delimited('{', separated_list(classDeclaration, nonempty_list(';')), '}')))
                     { [TopClassDeclaration $2 (ClassDeclaration $3 $ maybe Map.empty (Map.fromList . concat) $4 )] }
-               | 'instance' {- simplecontext -} qconId instance option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}'))) { undefined }
+               | 'instance' {- simplecontext -} qconId instance -- option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}')))
+                    { [TopInstanceDeclaration $2 (fst $3) (InstanceDeclaration (snd $3) Map.empty)] }
             -- | 'default' { 0 }
                | declaration { fmap TopVariableDeclaration $1 }
 
@@ -259,30 +260,31 @@ gtycon :: { MonoType SyntaxName }
        : '(' ')'                    { TyConstant (QName ["Primitive"] TypeConstructorName (UserName "()")) }
        | '(' nonempty_list(',') ')' { TyConstant (QName ["Primitive"] TypeConstructorName (UserName (replicate (length $2) ','))) }
        | '[' ']'                    { TyConstant (QName ["Primitive"] TypeConstructorName (UserName "[]")) }
-       | '(' '->' ')'               { TyArrow }
+       | '(' '->' ')'                { TyArrow }
        | qtyconId                   { TyConstant $1 }
 
 ---- Classes, context
 
-context : class '=>'                                           { 0 }
-        | delimited('(', separated_list(class, ','), ')') '=>' { 0 }
+-- context : class '=>'                                           { 0 }
+--         | delimited('(', separated_list(class, ','), ')') '=>' { 0 }
 
-simplecontext : simpleclass '=>'                                           { 0 }
-              | delimited('(', separated_list(simpleclass, ','), ')') '=>' { 0 }
+-- simplecontext : simpleclass '=>'                                           { 0 }
+--               | delimited('(', separated_list(simpleclass, ','), ')') '=>' { 0 }
 
-class : qconId varId                      { 0 }
-      | qconId delimited('(', atype, ')') { 0 }
+-- class : qconId varId                      { 0 }
+--       | qconId delimited('(', atype, ')') { 0 }
 
-simpleclass : qconId varId                      { 0 }
+-- simpleclass : qconId varId                      { 0 }
 
 classDeclaration :: { [ (SyntaxName, MonoType SyntaxName) ] }
                  : separated_nonempty_list(svarId, ',') '::' typeSignature { fmap (\x -> (x, $3)) $1 }
 
-instance : gtycon                                                { 0 }
-         | '(' gtycon list(varId) ')'                            { 0 }
-         | '(' varId ',' separated_nonempty_list(varId, ',') ')' { 0 }
-         | '[' varId ']'                                         { 0 }
-         | '(' qtyvarId '->' qtyvarId ')'                        { 0 }
+instance :: { (MonoType SyntaxName, [SyntaxName]) }
+         : gtycon                                                { ($1, []) }
+         | '(' gtycon list(varId) ')'                            { ($2, $3) }
+         | '(' varId ',' separated_nonempty_list(varId, ',') ')' { (TyConstant (QName ["Primitive"] TypeConstructorName (UserName (replicate (length $4) ','))), $2 : $4) }
+         | '[' varId ']'                                         { (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "[]")), [$2]) }
+         | '(' varId '->' varId ')'                               { (TyArrow, [$2, $4]) }
 
 instanceDeclaration : leftHandSide rightHandSide { undefined }
 --                  | varId rightHandSide        { 0 }
@@ -437,25 +439,28 @@ makeDeclarationMap mp =
             )
             ns
       return $ Declaration t decl
+--    makeDeclaration (t, []) = throwError ParseError
 
 data TopDeclaration = ImportDeclaration ModuleName
                     | TopVariableDeclaration VariableDeclaration
                     | TopTypeDeclaration SyntaxName (TypeDeclaration SyntaxName)
                     | TopClassDeclaration SyntaxName (ClassDeclaration SyntaxName)
+                    | TopInstanceDeclaration QSyntaxName (MonoType SyntaxName) (InstanceDeclaration SyntaxName)
 
 makeModule :: ModuleName -> [TopDeclaration] -> ParseMonad (Module SyntaxName)
 makeModule n tds = do
   let (m, bs) = foldl
         (flip addTopDeclaration)
-        (Module n Set.empty Map.empty Map.empty Map.empty, Map.empty)
+        (Module n Set.empty Map.empty Map.empty Map.empty Map.empty, Map.empty)
         tds
   ds <- makeDeclarationMap bs
   return $ m { moduleDeclarations = ds }
   where
-    addTopDeclaration (ImportDeclaration impName) (m, bs) = (m { moduleImport = Set.insert impName (moduleImport m) }, bs)
-    addTopDeclaration (TopVariableDeclaration v) (m, bs)  = (m, addBinding v bs)
-    addTopDeclaration (TopTypeDeclaration a b) (m, bs)    = (m { moduleTypeDeclarations = Map.insert a b (moduleTypeDeclarations m) }, bs)
-    addTopDeclaration (TopClassDeclaration a b) (m, bs)   = (m { moduleClassDeclarations = Map.insert a b (moduleClassDeclarations m) }, bs)
+    addTopDeclaration (ImportDeclaration impName) (m, bs)    = (m { moduleImport = Set.insert impName (moduleImport m) }, bs)
+    addTopDeclaration (TopVariableDeclaration v) (m, bs)     = (m, addBinding v bs)
+    addTopDeclaration (TopTypeDeclaration a b) (m, bs)       = (m { moduleTypeDeclarations = Map.insert a b (moduleTypeDeclarations m) }, bs)
+    addTopDeclaration (TopClassDeclaration a b) (m, bs)      = (m { moduleClassDeclarations = Map.insert a b (moduleClassDeclarations m) }, bs)
+    addTopDeclaration (TopInstanceDeclaration a b c) (m, bs) = (m { moduleInstanceDeclarations = Map.insert (a, b) c (moduleInstanceDeclarations m) }, bs)
 
 parseError x = error $ "Parse error : " ++ show x
 

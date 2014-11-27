@@ -150,7 +150,8 @@ compileFull fn = do
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e
     f (Right rs) (Right r) = Right $ r : rs
-          
+
+
 main :: IO ()
 main = do
   (flags, filenames) <- partition isFlag <$> getArgs

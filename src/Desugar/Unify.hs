@@ -16,8 +16,9 @@ import Syntax.Name
 import Debug.Trace
 
 data UnifyMap  = UnifyMap
-  { unifyTypeMap :: Map CoreName (MonoType CoreName)
-  , unifyKindMap :: Map CoreName (Kind CoreName)
+  { unifyTypeMap       :: Map CoreName (MonoType CoreName)
+  , unifyConstraintMap :: Map CoreName (Set QCoreName)
+  , unifyKindMap       :: Map CoreName (Kind CoreName)
   }
 
 data UnifyError = UnifyError (MonoType CoreName) (MonoType CoreName)
@@ -39,7 +40,7 @@ instance Show UnifyError where
 type UnifyMonad = StateT UnifyMap (Except UnifyError)
 
 runUnifyMonad :: UnifyMonad a -> Either UnifyError a
-runUnifyMonad = runExcept . flip evalStateT (UnifyMap Map.empty Map.empty)
+runUnifyMonad = runExcept . flip evalStateT (UnifyMap Map.empty Map.empty Map.empty)
 
 unifyKind :: Kind CoreName -> Kind CoreName -> UnifyMonad ()
 unifyKind k1 k2 = unifyKind' k1 k2 `catchError` (\e -> throwError $ InKindUnification k1 k2 e)
@@ -69,17 +70,26 @@ unifyKind k1 k2 = unifyKind' k1 k2 `catchError` (\e -> throwError $ InKindUnific
 unifyType :: MonoType CoreName -> MonoType CoreName -> UnifyMonad ()
 unifyType t1 t2 = unifyType' t1 t2 `catchError` (\e -> throwError $ InUnification t1 t2 e)
   where
-    unifyType' t1@(TyConstant a1) t2@(TyConstant a2) | a1 == a2          = return ()
+    unifyType' t1@(TyConstant a1) t2@(TyConstant a2) | a1 == a2           = return ()
     unifyType' TyArrow TyArrow                                           = return ()
     unifyType' (TyApplication a1 b1) (TyApplication a2 b2)               = do
       unifyType a1 a2
       unifyType b1 b2
-    unifyType' (TyVariable v1) (TyVariable v2) | v1 == v2                = return ()
+    unifyType' (TyVariable v1) (TyVariable v2) | v1 == v2                 = return ()
                                                | otherwise               = do
+      c1 <- Map.lookup v1 . unifyConstraintMap <$> get
+      c2 <- Map.lookup v2 . unifyConstraintMap <$> get
+      case (c1, c2) of
+        (Nothing, Nothing) -> return ()
+        (Just c1, Nothing) -> addConstraints v2 c1
+        (Nothing, Just c2) -> addConstraints v1 c2
+        (Just c1, Just c2) -> do
+          addConstraints v1 c2
+          addConstraints v2 c1
       x1 <- Map.lookup v1 . unifyTypeMap <$> get
       x2 <- Map.lookup v2 . unifyTypeMap <$> get
       case (x1, x2) of
-        (Nothing, Nothing) -> modify $ \s -> s { unifyTypeMap = Map.insert v1 (TyVariable v2) (unifyTypeMap s) }
+        (Nothing, Nothing) -> modify $ \s -> s { unifyTypeMap              = Map.insert v1 (TyVariable v2) (unifyTypeMap s) }
         (Just x1, Nothing) -> unifyType x1 (TyVariable v2)
         (Nothing, Just x2) -> unifyType (TyVariable v1) x2
         (Just x1, Just x2) -> unifyType x1 x2
@@ -87,10 +97,14 @@ unifyType t1 t2 = unifyType' t1 t2 `catchError` (\e -> throwError $ InUnificatio
                                   | otherwise                            = do
       x1 <- Map.lookup v1 . unifyTypeMap <$> get
       case x1 of
-        Nothing -> modify $ \s -> s { unifyTypeMap = Map.insert v1 t1 (unifyTypeMap s) }
-        Just x1 -> unifyType x1 t1
+        Nothing            -> modify $ \s -> s { unifyTypeMap              = Map.insert v1 t1 (unifyTypeMap s) }
+                                             -- Add Constraints to t1...
+        Just x1            -> unifyType x1 t1
     unifyType' t1 v1@(TyVariable _)                                      = unifyType v1 t1
     unifyType' t1 t2                                                     = throwError $ UnifyError t1 t2
+
+addConstraints :: CoreName -> Set QCoreName -> UnifyMonad ()
+addConstraints v c = modify $ \s -> s { unifyConstraintMap = Map.insertWith Set.union v c (unifyConstraintMap s) }
 
 substituteType :: MonoType CoreName -> UnifyMonad (MonoType CoreName)
 substituteType TyArrow             = return TyArrow
@@ -114,4 +128,4 @@ unifyPolyType :: PolyType CoreName -> PolyType CoreName -> UnifyMonad (PolyType 
 unifyPolyType (PolyType vs1 t1) (PolyType vs2 t2) = do
   unifyType t1 t2
   monoType <- substituteType t1
-  return $ PolyType (Set.intersection (Set.union vs1 vs2) (freeTypeVariables monoType)) monoType
+  return $ PolyType (Map.filterWithKey (flip . const $ flip Set.member (freeTypeVariables monoType)) $ Map.intersectionWith Set.intersection vs1 vs2) monoType

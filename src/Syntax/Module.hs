@@ -15,11 +15,12 @@ type ModuleName = [String]
 -- TODO : Move this to Parser.y
 
 data Module n = Module
-  { moduleName              :: ModuleName
-  , moduleImport            :: Set ModuleName
-  , moduleTypeDeclarations  :: TypeDeclarationMap n
-  , moduleClassDeclarations :: ClassDeclarationMap n
-  , moduleDeclarations      :: DeclarationMap n
+  { moduleName                 :: ModuleName
+  , moduleImport               :: Set ModuleName
+  , moduleTypeDeclarations     :: TypeDeclarationMap n
+  , moduleClassDeclarations    :: ClassDeclarationMap n
+  , moduleInstanceDeclarations :: InstanceDeclarationMap n
+  , moduleDeclarations         :: DeclarationMap n
   }
   deriving (Show)
 

@@ -40,6 +40,7 @@ primitiveModule = Module
               )
             ) <$> [2..4])
   , moduleClassDeclarations = Map.empty
+  , moduleInstanceDeclarations = Map.empty
   , moduleDeclarations     = Map.fromList
       [ (UserName "add_prim",    PrimitiveDeclaration PrimitiveIntAdd)
       , (UserName "sub_prim",    PrimitiveDeclaration PrimitiveIntSub)

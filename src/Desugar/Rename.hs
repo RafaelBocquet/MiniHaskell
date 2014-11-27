@@ -192,10 +192,10 @@ renameDeclaration (PrimitiveDeclaration prim) = return $ PrimitiveDeclaration pr
 
 renamePolyType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
 renamePolyType t = do
-    ks <- Map.keysSet <$> ask
-    let fv = Set.toList . Set.filter (\v -> not $ Set.member (QName [] TypeVariableName v) ks) $ freeTypeVariables t
-    (_, t') <- renameTypeVariableNames [] fv $ renameMonoType t
-    return t'
+  ks <- Map.keysSet <$> ask
+  let fv = Set.toList . Set.filter (\v -> not $ Set.member (QName [] TypeVariableName v) ks) $ freeTypeVariables t
+  (_, t') <- renameTypeVariableNames [] fv $ renameMonoType t
+  return t'
 
 renameMonoType :: Renaming (MonoType SyntaxName) (MonoType CoreName)
 renameMonoType (TyVariable n)      = do
@@ -218,7 +218,7 @@ renameDataConstructor md (DataConstructor n ts) m = do
 
 renameClassDeclaration :: ModuleName -> RenamingIn (ClassDeclaration SyntaxName) (ClassDeclaration CoreName) c
 renameClassDeclaration md (ClassDeclaration v ds) m = do
-  (v', (ds', m')) <- renameTypeVariableName md v
+  (v', (ds', m')) <- renameTypeVariableName [] v
                      $ renameMap md VariableName renamePolyType ds
                      $ m
   return (ClassDeclaration v' ds', m')
@@ -258,9 +258,10 @@ renameTypeDeclarations :: ModuleName -> RenamingIn (TypeDeclarationMap SyntaxNam
 renameTypeDeclarations md = renameMapIn md TypeConstructorName (renameTypeDeclaration md)
 
 renameModule :: Module SyntaxName -> RenameMonad (RenameMap, Module CoreName)
-renameModule (Module mn is ds cs bs) = do
+renameModule (Module mn is ds cs _ bs) = do
   (ds', (cs', (bs', rMap))) <- renameTypeDeclarations mn ds
                         $ renameClassDeclarations mn cs
                         $ renameDeclarations mn bs
                         $ ask
-  return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' cs' bs')
+  traceShow rMap $ return ()
+  return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' cs' Map.empty bs')

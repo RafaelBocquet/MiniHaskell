@@ -16,12 +16,12 @@ rem (Int a) (Int b) = rem_prim a b
 negate :: Int -> Int
 negate (Int a) = negate_prim a
 
-(<), (<=), (>), (>=), (==), (/=) :: Int -> Int -> Bool
+(<), (<=), (>), (>=), (/=) :: Int -> Int -> Bool
 (<)  (Int a) (Int b) = intLT_prim a b
 (<=) (Int a) (Int b) = intLE_prim a b
 (>)  (Int a) (Int b) = intGT_prim a b
 (>=) (Int a) (Int b) = intGE_prim a b
-(==) (Int a) (Int b) = intEQ_prim a b
+-- (==) (Int a) (Int b) = intEQ_prim a b
 (/=) (Int a) (Int b) = intNE_prim a b
 
 error :: [Char] -> a
@@ -41,9 +41,13 @@ data Char = Char Char_prim
 -- ; ord (Char a) = Int (ord_prim a)
 
 class Eq a where
- (==) :: Char -> Char -> Bool
+ (==) :: a -> a -> Bool
  -- Char a /= Char b = charNE_prim a b
- 
+
+instance Eq Int where
+  Int a == Int b = intEQ_prim a b
+
+  
 -- class Ord Char where
 --  Char a < Char b = charLT_prim a b
 --  Char a <= Char b = charLE_prim a b

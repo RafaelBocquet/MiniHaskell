@@ -23,39 +23,36 @@ data MonoType n = TyApplication (MonoType n) (MonoType n)
                 | TyVariable n
                 | TyConstant (QName n)
                 | TyArrow
+                deriving (Eq, Ord)
 
 instance Show n => Show (MonoType n) where
-  --show (TyApplication (UserName "()") [])     = "()"
-  --show (TyApplication (UserName "[]") [a])    = "[" ++ show a ++ "]"
-  --show (TyApplication (UserName "->") [a, b]) = "(" ++ show a ++ " -> " ++ show b ++ ")"
   show (TyApplication a b) = "(" ++ show a ++ " " ++ show b ++ ")"
   show (TyVariable v)      = show v
   show (TyConstant c)      = show c
   show TyArrow             = "(->)"
 
 data PolyType n = PolyType
-  { polyTypeVariables   :: Set n
+  { polyTypeVariables   :: Map n (Set n) -- Free variable -> contraints (set of class names)
   , polyTypeType        :: MonoType n
   }
 
 instance Show n => Show (PolyType n) where
-  show (PolyType vs t) | Set.null vs = show t
-  show (PolyType vs t)               = "forall" ++ concat ((' ' :) . show <$> Set.toList vs) ++ ". " ++ show t
+  show (PolyType vs t) | Map.null vs = show t
+  show (PolyType vs t)               = "forall" ++ concat ((' ' :) . show <$> Map.keys vs) ++ ". " ++ show t
 
 makeTypeApplication :: Ord n => MonoType n -> [MonoType n] -> MonoType n
 makeTypeApplication = foldl TyApplication
 
 freeKindVariables :: Ord n => Kind n -> Set n
-freeKindVariables (KVariable v)                     = Set.singleton v
-freeKindVariables KStar                             = Set.empty
-freeKindVariables (KArrow a b)                      = Set.union (freeKindVariables a) (freeKindVariables b)
-
+freeKindVariables (KVariable v) = Set.singleton v
+freeKindVariables KStar         = Set.empty
+freeKindVariables (KArrow a b)  = Set.union (freeKindVariables a) (freeKindVariables b)
 
 freeTypeVariables :: Ord n => MonoType n -> Set n
-freeTypeVariables (TyVariable v)                             = Set.singleton v
-freeTypeVariables (TyConstant _)                             = Set.empty
-freeTypeVariables TyArrow                                    = Set.empty
-freeTypeVariables (TyApplication a b)                        = Set.union (freeTypeVariables a) (freeTypeVariables b)
+freeTypeVariables (TyVariable v)      = Set.singleton v
+freeTypeVariables (TyConstant _)      = Set.empty
+freeTypeVariables TyArrow             = Set.empty
+freeTypeVariables (TyApplication a b) = Set.union (freeTypeVariables a) (freeTypeVariables b)
 
 freePolyTypeVariables :: Ord n => PolyType n -> Set n
-freePolyTypeVariables (PolyType vs t) = Set.difference (freeTypeVariables t) vs
+freePolyTypeVariables (PolyType vs t) = Set.difference (freeTypeVariables t) (Map.keysSet vs)
