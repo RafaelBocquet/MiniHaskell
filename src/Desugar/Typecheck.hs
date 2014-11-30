@@ -1,13 +1,17 @@
 module Desugar.Typecheck where
 
-import Control.Monad.Except
-import Control.Monad.State
-import Control.Monad.Reader
+import Prelude hiding (forM, mapM)
+
+import Control.Monad.Except hiding (forM, mapM)
+import Control.Monad.State hiding (forM, mapM)
+import Control.Monad.Reader hiding (forM, mapM)
 import Control.Applicative
+import Control.Arrow ((***))
 
 import Data.Maybe
 import Data.Monoid
 import Data.Foldable (foldlM, foldrM)
+import Data.Traversable
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -29,9 +33,10 @@ import qualified Core.Expression as C
 import Debug.Trace
 
 data Environment = Environment
-  { environmentTypeMap  :: Map QCoreName (PolyType  CoreName) -- Type of Variables
-  , environmentKindMap  :: Map QCoreName (Kind CoreName)     -- Kind of Type Variables
-  , environmentRenaming :: RenameMap
+  { environmentTypeMap   :: Map QCoreName (PolyType CoreName) -- Type of Variables
+  , environmentKindMap   :: Map QCoreName (Kind CoreName)     -- Kind of Types
+  , environmentRenaming  :: RenameMap
+  , environmentInstances :: Map (QCoreName, CoreName) C.Expression
   }
 
 data TypecheckError = UnboundVariable QCoreName
@@ -61,7 +66,7 @@ generateName = do
 
 runTypecheckMonad :: Environment -> TypecheckMonad a -> State Int (Either TypecheckError a)
 runTypecheckMonad env m = do
-  c      <- get
+  c     <- get
   let v = runUnifyMonad . flip runStateT c . runExceptT . flip runReaderT env $ m
   case v of
     Left e             -> return (Left $ TCUnifyError e)
@@ -86,6 +91,12 @@ localBindMany bs = local $ \s -> s { environmentTypeMap = Map.union (Map.mapKeys
 globalBindMany :: Map QCoreName (PolyType CoreName) -> TypecheckMonad a -> TypecheckMonad a
 globalBindMany bs = local $ \s -> s { environmentTypeMap = Map.union bs (environmentTypeMap s) }
 
+bindInstance :: QCoreName -> CoreName -> C.Expression -> TypecheckMonad a -> TypecheckMonad a
+bindInstance cls ty inst = local $ \s -> s { environmentInstances = Map.insert (cls, ty) inst (environmentInstances s) }
+
+bindInstances :: Map (QCoreName, CoreName) C.Expression -> TypecheckMonad a -> TypecheckMonad a
+bindInstances is = local $ \s -> s { environmentInstances = Map.union is (environmentInstances s) }
+
 getPrimitive :: NameSpace -> String -> TypecheckMonad QCoreName
 getPrimitive ns s = do
   p <- Map.lookup (QName ["Primitive"] ns (UserName s)) . environmentRenaming <$> ask
@@ -101,16 +112,20 @@ getBase ns s = do
     _                       -> throwError $ UnknownPrimitive s
 
 -- TODO : set contraints
-instantiateType :: PolyType CoreName -> TypecheckMonad (MonoType CoreName)
+instantiateType :: PolyType CoreName -> TypecheckMonad (MonoType CoreName, [(QCoreName, MonoType CoreName)])
 instantiateType (PolyType as t) = do
-    subst <- Map.fromList <$> forM (Map.keys as) (\a -> (,) a <$> generateName)
+    (subst, cs') <- fmap (Map.fromList *** concat) $ fmap unzip $ forM (Map.toList as) $ \(a, cs) -> do
+      n <- generateName
+      liftUnify $ addConstraints (TyVariable n) cs
+      return ((a, n), fmap (flip (,) (TyVariable n)) (Set.toList cs))
     let applySubstitution (TyVariable v)      = case Map.lookup v subst of
           Just a  -> TyVariable a
           Nothing -> TyVariable v
         applySubstitution (TyApplication a b) = TyApplication (applySubstitution a) (applySubstitution b)
         applySubstitution (TyConstant c)      = TyConstant c
         applySubstitution TyArrow             = TyArrow
-    applySubstitution <$> (liftUnify $ substituteType t)
+    ty <- fmap applySubstitution $ liftUnify $ substituteType t
+    return (ty, cs')
 
 environmentVariables :: TypecheckMonad (Set CoreName)
 environmentVariables = Set.unions . (freePolyTypeVariables <$>) . Map.elems . environmentTypeMap <$> ask
@@ -155,7 +170,7 @@ reducePatternList df (v:vs) (PatternListMap mp)   =
   )
   (Map.toList mp)
 
-typecheckPatterns :: Expression CoreName -> [(Pattern CoreName, Expression CoreName)] -> TypecheckMonad C.Expression
+typecheckPatterns :: Expression CoreName -> [(Pattern CoreName, Expression CoreName)] -> TypecheckMonad C.TypeClassExpression
 typecheckPatterns epat pats = do
   pTy <- foldlM patternGroupCombine C.NoPatternGroupType =<< (\(Pattern p _) -> patternGroupType p) `mapM` (fst <$> pats)
   case pTy of
@@ -208,18 +223,18 @@ typecheckPatterns epat pats = do
         return $ e'
       (Pattern PWildcard vs, e):[]   -> do
         epat' <- typecheckExpression epat
-        e'    <- localBindMany (Map.fromList $ (\v -> (v, PolyType Map.empty (C.expressionType epat'))) <$> vs) $ typecheckExpression e
+        e'    <- localBindMany (Map.fromList $ (\v -> (v, PolyType Map.empty (C.typeclassExpressionType epat'))) <$> vs) $ typecheckExpression e
         return $ C.Expression
-              (C.expressionType e')
+              (C.typeclassExpressionType e', [])
               (C.ELet (Map.fromList
                         $ ( head vs
-                          , ( PolyType Map.empty (C.expressionType epat')
+                          , ( PolyType Map.empty (C.typeclassExpressionType epat')
                             , epat'
                             )
                           )
                         : fmap (\v -> ( v
-                                      , ( PolyType Map.empty (C.expressionType epat')
-                                        , C.Expression (C.expressionType epat') (C.EVariable (QName [] VariableName (head vs)))
+                                      , ( PolyType Map.empty (C.typeclassExpressionType epat')
+                                        , C.Expression (C.typeclassExpressionType epat', []) (C.EVariable (QName [] VariableName (head vs)))
                                         )
                                       )
                                ) (tail vs)
@@ -245,50 +260,50 @@ typecheckPatterns epat pats = do
             Map.empty
             pats
           vs = concat $ fmap (\(Pattern _ pvs, _) -> pvs) pats
-      (df', dfvar, sigma, cases) <- localBindMany (Map.fromList $ (\v -> (v, PolyType Map.empty (C.expressionType epat'))) <$> vs) $ do
+      (df', dfvar, sigma, cases) <- localBindMany (Map.fromList $ (\v -> (v, PolyType Map.empty (C.typeclassExpressionType epat'))) <$> vs) $ do
         df'   <- maybe (return Nothing) (fmap Just . typecheckExpression) df
         dfvar <- maybe (return Nothing) (const $ fmap Just generateName) df
         sigma <- TyVariable <$> generateName
         cases <- fmap Map.fromList $ maybe id (\v -> localBind v (PolyType Map.empty sigma)) dfvar
                  $ forM (Map.toList cases) $ \(con, patList) -> do
-                   conty   <- instantiateType =<< fromJust . Map.lookup con . environmentTypeMap <$> ask
-                   conargs <- constructorArguments conty
-                   conret  <- constructorResultType conty
-                   liftUnify $ unifyType conret (C.expressionType epat')
-                   vars    <- forM conargs $ const generateName
-                   ecase   <- localBindMany (Map.fromList $ zip vars (PolyType Map.empty <$> conargs))
+                   (conty, []) <- instantiateType =<< fromJust . Map.lookup con . environmentTypeMap <$> ask
+                   conargs     <- constructorArguments conty
+                   conret      <- constructorResultType conty
+                   liftUnify $ unifyType conret (C.typeclassExpressionType epat')
+                   vars        <- forM conargs $ const generateName
+                   ecase       <- localBindMany (Map.fromList $ zip vars (PolyType Map.empty <$> conargs))
                               $ typecheckExpression (reducePatternList (Locate noLocation . EVariable . QName [] VariableName <$> dfvar) vars patList)
-                   liftUnify $ unifyType (C.expressionType ecase) sigma
+                   liftUnify $ unifyType (C.typeclassExpressionType ecase) sigma
                    return (con, (vars, ecase))
         return (df', dfvar, sigma, cases)
       return
-        $ maybe id (\v -> C.Expression sigma . C.ELet (Map.singleton v (PolyType Map.empty (C.expressionType (fromJust df')), fromJust df'))) dfvar
+        $ maybe id (\v -> C.Expression (sigma, []) . C.ELet (Map.singleton v (PolyType Map.empty (C.typeclassExpressionType (fromJust df')), fromJust df'))) dfvar
           $ (if null vs
              then id
-             else C.Expression sigma . (C.ELet (Map.fromList
-                                                $ ( head vs
-                                                  , ( PolyType Map.empty (C.expressionType epat')
-                                                    , epat'
-                                                    )
-                                                  )
-                                                : fmap (\v -> ( v
-                                                             , ( PolyType Map.empty (C.expressionType epat')
-                                                             , C.Expression (C.expressionType epat') (C.EVariable (QName [] VariableName (head vs)))
-                                                             )
-                                                             )
-                                                       ) (tail vs)
-                                               )))
-          $ C.Expression sigma $ C.ECase epat' $ C.PData cases (C.Expression sigma . C.EVariable . QName [] VariableName <$> dfvar)
+             else C.Expression (sigma, []) . (C.ELet (Map.fromList
+                                                      $ ( head vs
+                                                        , ( PolyType Map.empty (C.typeclassExpressionType epat')
+                                                          , epat'
+                                                          )
+                                                        )
+                                                      : fmap (\v -> ( v
+                                                                   , ( PolyType Map.empty (C.typeclassExpressionType epat')
+                                                                     , C.Expression (C.typeclassExpressionType epat', []) (C.EVariable (QName [] VariableName (head vs)))
+                                                                     )
+                                                                   )
+                                                             ) (tail vs)
+                                                     )))
+          $ C.Expression (sigma, []) $ C.ECase epat' $ C.PData cases (C.Expression (sigma, []) . C.EVariable . QName [] VariableName <$> dfvar)
 
-typecheckExpression :: Expression CoreName -> TypecheckMonad C.Expression
+typecheckExpression :: Expression CoreName -> TypecheckMonad C.TypeClassExpression
 typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> throwError $ InTypechecking e err)
   where
     typecheckExpression' (EInteger i)                                 = do
       tyInt <- TyConstant <$> getBase TypeConstructorName "Int"
-      return $ C.Expression tyInt (C.EInteger i)
+      return $ C.Expression (tyInt, []) (C.EInteger i)
     typecheckExpression' (EChar c)                                    = do
       tyChar <- TyConstant <$> getBase TypeConstructorName "Char"
-      return $ C.Expression tyChar (C.EChar c)
+      return $ C.Expression (tyChar, []) (C.EChar c)
     typecheckExpression' (EVariable x) = do
       emap <- environmentTypeMap <$> ask
       t <- Map.lookup x . environmentTypeMap <$> ask
@@ -302,26 +317,26 @@ typecheckExpression e = typecheckExpression' (delocate e) `catchError` (\err -> 
       tTy   <- typecheckExpression t
       tau   <- generateName
       sigma <- generateName
-      liftUnify $ unifyType (C.expressionType tTy) (TyVariable tau)
-      liftUnify $ unifyType (C.expressionType fTy) (makeTypeApplication TyArrow [TyVariable tau, TyVariable sigma])
-      return $ C.Expression (TyVariable sigma) (C.EApplication fTy tTy)
+      liftUnify $ unifyType (C.typeclassExpressionType tTy) (TyVariable tau)
+      liftUnify $ unifyType (C.typeclassExpressionType fTy) (makeTypeApplication TyArrow [TyVariable tau, TyVariable sigma])
+      return $ C.Expression (TyVariable sigma, []) (C.EApplication fTy tTy)
     typecheckExpression' (ELambda x e)                                = do
       tau     <- generateName
       eTy     <- localBind x (PolyType Map.empty (TyVariable tau)) $ typecheckExpression e
-      return $ C.Expression (makeTypeApplication TyArrow [TyVariable tau, C.expressionType eTy]) (C.ELambda x eTy)
+      return $ C.Expression (makeTypeApplication TyArrow [TyVariable tau, C.typeclassExpressionType eTy], []) (C.ELambda x eTy)
     typecheckExpression' (ELet bs e)                                  = do
       bts <- typecheckBindings [] bs
       eTy <- localBindMany (Map.map fst bts) $ typecheckExpression e
-      return $ C.Expression (C.expressionType eTy) (C.ELet (Map.map (\(ty, C.Declaration e) -> (ty, e)) bts) eTy)
+      return $ C.Expression (C.typeclassExpressionType eTy, []) (C.ELet (Map.map (\(ty, C.Declaration e) -> (ty, e)) bts) eTy)
     typecheckExpression' (ECase e pats)                               = typecheckPatterns e pats
 
 
-typecheckDeclaration :: Declaration CoreName -> TypecheckMonad C.Declaration
+typecheckDeclaration :: Declaration CoreName -> TypecheckMonad C.TypeClassDeclaration
 typecheckDeclaration (Declaration Nothing e)  = C.Declaration <$> typecheckExpression e
 typecheckDeclaration (Declaration (Just t) e) = do
   e' <- typecheckExpression e
-  t' <- instantiateType $ PolyType (Map.fromSet (const Set.empty) $ freeTypeVariables t) t
-  liftUnify $ unifyType t' (C.expressionType e')
+  (t', []) <- instantiateType $ PolyType (Map.fromSet (const Set.empty) $ freeTypeVariables t) t
+  liftUnify $ unifyType t' (C.typeclassExpressionType e')
   return $ C.Declaration e'
 typecheckDeclaration (PrimitiveDeclaration prim) = return $ C.PrimitiveDeclaration prim
 
@@ -382,7 +397,7 @@ primitiveType p
     a      <- TyVariable <$> generateName
     return $ makeTypeApplication TyArrow [tyList [tyChar], a]
 
-typecheckBindings :: ModuleName -> DeclarationMap CoreName -> TypecheckMonad C.DeclarationMap
+typecheckBindings :: ModuleName -> DeclarationMap CoreName -> TypecheckMonad C.TypeClassDeclarationMap
 typecheckBindings md bs = do
     let bgs = reverse $ topologicalSort (Set.fromList $ Map.keys mBindings) []
     Map.mapKeys (\(QName _ VariableName k) -> k) <$> foldlM
@@ -418,7 +433,7 @@ typecheckBindings md bs = do
             in
           topologicalSort (Set.delete elem $ st `Set.difference` allElemDep) (elemSet : acc')
 
-    typecheckBindings' :: Set QCoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName, C.Declaration))
+    typecheckBindings' :: Set QCoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName, C.TypeClassDeclaration))
     typecheckBindings' st = do
       let xs = Set.toList st
           es = fromJust . flip Map.lookup mBindings <$> xs
@@ -426,14 +441,19 @@ typecheckBindings md bs = do
       esTy <- globalBindMany (Map.fromList $ zip xs (PolyType Map.empty <$> ts)) $ forM (zip es ts) $ \(e, t) -> do
         eTy <- typecheckDeclaration e
         case eTy of
-          C.Declaration e             -> liftUnify $ unifyType t (C.expressionType e)
+          C.Declaration e             -> liftUnify $ unifyType t (C.typeclassExpressionType e)
           C.PrimitiveDeclaration prim -> do
             pTy <- primitiveType prim
             liftUnify $ unifyType t pTy
         return $ eTy
       ts    <- liftUnify $ substituteType `mapM` ts
       freeG <- environmentVariables
-      let tvs = uncurry PolyType <$> zip (Map.fromSet (const Set.empty) . (`Set.difference` freeG) . freeTypeVariables <$> ts) ts
+      tcs <- forM ts $ \t -> do
+        let fvs = (`Set.difference` freeG) $ freeTypeVariables t
+        fmap Map.fromList $ forM (Set.toList fvs) $ \v -> do
+          cs <- liftUnify $ getConstraints v
+          return (v, cs)
+      let tvs = uncurry PolyType <$> zip tcs ts
       return $ Map.fromList $ zip xs (zip tvs esTy)
 
 typecheckDataConstructor :: ModuleName -> MonoType CoreName -> Set CoreName -> DataConstructor CoreName -> TypecheckMonad (C.DataConstructor, Map QCoreName (PolyType CoreName))
@@ -457,21 +477,124 @@ typecheckTypeDeclarations md ds = do
     return (maybe Nothing (\a -> Just (name, a)) a, b)
   return (Map.fromList . fmap fromJust . filter isJust $ fst <$> ds', Map.unions $ snd <$> ds')
 
-typecheckClassDeclaration :: ModuleName -> CoreName -> ClassDeclaration CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
+typecheckClassDeclaration :: ModuleName -> CoreName -> ClassDeclaration CoreName -> TypecheckMonad ((QCoreName, C.DataDeclaration), C.DeclarationMap)
 typecheckClassDeclaration md cls (ClassDeclaration v ms) = do
-  fmap Map.fromList $ forM (Map.toList ms) $ \(n, ty) -> do
+  let cls_type = TyApplication (TyConstant $ QName md TypeClassName cls) (TyVariable v)
+  (fvs, ds) <- fmap (Set.delete v . Set.unions *** Map.fromList) . fmap unzip $ forM (zip [0..] $ Map.toList ms) $ \(i, (n, ty)) -> do
     let fvs = freeTypeVariables ty
     when (not (Set.member v fvs)) $ error $ "class ty var " ++ show v ++ " should appear in class method signature " ++ show fvs
-    return (QName md VariableName n, PolyType (Map.fromSet (const Set.empty) fvs) ty)
+    cls_x  <- generateName
+    cls_vs <- forM (Map.toList ms) $ const generateName
+    return ( fvs
+           , ( n
+             , ( PolyType (Map.insert v (Set.singleton $ QName md TypeClassName cls) $ Map.fromSet (const Set.empty) fvs) ty
+               , C.Declaration
+                 $ C.Expression (makeTypeApplication TyArrow [cls_type, ty]) $ C.ELambda cls_x
+                 $ C.Expression ty $ C.ECase (C.Expression cls_type $ C.EVariable $ QName [] VariableName cls_x)
+                 $ flip C.PData Nothing
+                 $ Map.singleton (QName md ConstructorName cls)
+                 $ ( cls_vs
+                   , C.Expression ty $ C.EVariable $ QName [] VariableName $ cls_vs !! i
+                   )
+               )
+             )
+           )
+  let ctype = PolyType (Map.fromSet (const Set.empty) fvs)
+              $ foldr
+              (\a b -> makeTypeApplication TyArrow [a, b])
+              cls_type
+              (fmap snd $ Map.toList ms)
+      dd = C.DataDeclaration [v] [C.DataConstructor (QName md ConstructorName cls) (fmap snd $ Map.toList ms) ctype]
+  return ((QName md TypeClassName cls, dd), ds)
 
-typecheckClassDeclarations :: ModuleName -> ClassDeclarationMap CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName))
-typecheckClassDeclarations md cs = fmap Map.unions $ (uncurry $ typecheckClassDeclaration md) `mapM` Map.toList cs
+typecheckClassDeclarations :: ModuleName -> ClassDeclarationMap CoreName -> TypecheckMonad (C.DataDeclarationMap, C.DeclarationMap)
+typecheckClassDeclarations md cs = do
+  fmap (Map.fromList *** Map.unions) . fmap unzip $ (uncurry $ typecheckClassDeclaration md) `mapM` Map.toList cs
 
-typecheckModule :: Module CoreName -> TypecheckMonad (Map QCoreName (PolyType CoreName), C.Module)
-typecheckModule (Module md is ds cs _ bs) = do
+typecheckInstances :: ModuleName -> InstanceDeclarationMap CoreName -> TypecheckMonad ()
+typecheckInstances md is = do
+  forM_ (Map.toList is) $ \((a, b), _) -> liftUnify $ addInstance a b
+
+resolvePatternGroupInstances :: C.TypeClassPatternGroup -> TypecheckMonad C.PatternGroup
+resolvePatternGroupInstances (C.PData cs df) = do
+  cs' <- mapM (\(vs, e) -> liftM ((,) vs) (resolveExpressionInstances e)) cs
+  df' <- mapM resolveExpressionInstances df
+  return $ C.PData cs' df'
+
+resolveExpressionInstances' :: C.TypeClassExpression' -> TypecheckMonad C.Expression'
+resolveExpressionInstances' (C.EInteger i)       = return $ C.EInteger i
+resolveExpressionInstances' (C.EChar c)          = return $ C.EChar c
+resolveExpressionInstances' (C.EVariable v)      = return $ C.EVariable v
+resolveExpressionInstances' (C.EApplication f t) = C.EApplication <$> resolveExpressionInstances f <*> resolveExpressionInstances t
+resolveExpressionInstances' (C.ELambda x e)      = C.ELambda x <$> resolveExpressionInstances e
+resolveExpressionInstances' (C.ELet bs e)        = C.ELet <$> resolveBindingsInstances bs <*> resolveExpressionInstances e
+resolveExpressionInstances' (C.ECase e p)        = C.ECase <$> resolveExpressionInstances e <*> resolvePatternGroupInstances p
+
+resolveExpressionInstances :: C.TypeClassExpression -> TypecheckMonad C.Expression
+resolveExpressionInstances (C.Expression (ty, cs) e) = do
+  e' <- resolveExpressionInstances' e
+  cs' <- forM cs $ \(cls, ty) -> do
+    ty' <- liftUnify $ substituteType ty
+    buildInstance cls ty'
+  return $ C.makeApplication (C.Expression ty e') cs'
+  where
+    buildInstance :: QCoreName -> MonoType CoreName -> TypecheckMonad C.Expression
+    buildInstance cls (TyVariable v) = do
+      n <- Map.lookup (cls, v) . environmentInstances <$> ask
+      case n of
+       Nothing -> do
+         aaa <- liftUnify $ getConstraints v
+         error $ "Instance error : " ++ show cls ++ " " ++ show v
+       Just e  -> return e
+    buildInstance cls t = do
+      let (a, bs) = typeApplicationDecompose t []
+      error $ "Unimplemented " ++ show (cls, a, bs)
+      -- from instances
+      return $ C.Expression TyArrow (C.EInteger 0)
+
+resolvePolyExpressionInstances :: PolyType CoreName -> C.TypeClassExpression -> TypecheckMonad (PolyType CoreName, C.Expression)
+resolvePolyExpressionInstances ty@(PolyType cs _) e = do
+  is <- fmap (Map.fromList . concat) $ forM (Map.toList cs) $ \(tv, c) ->
+    forM (Set.toList c) $ \cls -> do
+      n <- generateName
+      return ((cls, tv), C.Expression undefined (C.EVariable (QName [] VariableName n)))
+  traceShow ('I', cs) $ return ()
+  e' <- bindInstances is $ resolveExpressionInstances e
+  return $ ( PolyType (fmap (const Set.empty) cs) (C.expressionType e')
+           , e'
+           )
+
+resolveBindingsInstances :: C.TypeClassBindingMap -> TypecheckMonad C.BindingMap
+resolveBindingsInstances mp = traverse (uncurry resolvePolyExpressionInstances) mp
+
+resolveDeclarationInstances :: (PolyType CoreName, C.TypeClassDeclaration) -> TypecheckMonad (PolyType CoreName, C.Declaration)
+resolveDeclarationInstances (ty, C.Declaration e)          = do
+  (ty', e') <- resolvePolyExpressionInstances ty e
+  return (ty, C.Declaration e')
+  
+resolveDeclarationInstances (ty, C.PrimitiveDeclaration p) = return $ (ty, C.PrimitiveDeclaration p)
+
+resolveDeclarationsInstances :: C.TypeClassDeclarationMap -> TypecheckMonad C.DeclarationMap
+resolveDeclarationsInstances mp = do
+  fmap Map.fromDistinctAscList $ forM (Map.toList mp) $ \(k, d) -> do
+    d' <- resolveDeclarationInstances d
+    return (k, d')
+
+typecheckModule :: Module CoreName -> TypecheckMonad ( Map QCoreName (PolyType CoreName)
+--                                                 , Map (QCoreName, QCoreName) QCoreName
+                                                   , C.Module
+                                                   )
+typecheckModule (Module md is ds cs ids bs) = do
   (dds', ds') <- typecheckTypeDeclarations md ds
-  cs'         <- typecheckClassDeclarations md cs
-  bs'         <- globalBindMany cs'
+  (cds', cs') <- typecheckClassDeclarations md cs
+  typecheckInstances md ids
+  bs'         <- globalBindMany (Map.map fst . Map.mapKeys (QName md VariableName) $ cs')
                  $ globalBindMany ds'
                  $ typecheckBindings md bs
-  return (Map.unions [ds', cs', Map.map fst . Map.mapKeys (QName md VariableName) $ bs'], C.Module md dds' bs')
+  decls <- resolveDeclarationsInstances bs'
+  return ( Map.unions [ ds'
+                      , Map.map fst . Map.mapKeys (QName md VariableName) $ cs'
+                      , Map.map fst . Map.mapKeys (QName md VariableName) $ decls
+                      ]
+         , C.Module md (Map.union dds' cds') (Map.union decls cs')
+         )

@@ -32,7 +32,7 @@ instance Show n => Show (MonoType n) where
   show TyArrow             = "(->)"
 
 data PolyType n = PolyType
-  { polyTypeVariables   :: Map n (Set n) -- Free variable -> contraints (set of class names)
+  { polyTypeVariables   :: Map n (Set (QName n)) -- Free variable -> contraints (set of class names)
   , polyTypeType        :: MonoType n
   }
 
@@ -42,6 +42,12 @@ instance Show n => Show (PolyType n) where
 
 makeTypeApplication :: Ord n => MonoType n -> [MonoType n] -> MonoType n
 makeTypeApplication = foldl TyApplication
+
+
+typeApplicationDecompose :: MonoType CoreName -> [MonoType CoreName] -> (MonoType CoreName, [MonoType CoreName])
+typeApplicationDecompose TyArrow             bs = (TyArrow, bs)
+typeApplicationDecompose (TyConstant c)      bs = (TyConstant c, bs)
+typeApplicationDecompose (TyApplication a b) bs = typeApplicationDecompose a (b : bs)
 
 freeKindVariables :: Ord n => Kind n -> Set n
 freeKindVariables (KVariable v) = Set.singleton v

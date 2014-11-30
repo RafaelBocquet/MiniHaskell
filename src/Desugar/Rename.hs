@@ -8,6 +8,7 @@ import Control.Monad.Except
 import Control.Monad.State
 import Control.Monad.Reader
 import Control.Applicative
+import Control.Arrow ((***))
 
 import Data.Foldable (foldrM, foldlM)
 
@@ -18,6 +19,7 @@ import qualified Data.Set as Set
 
 import Data.Maybe
 import Data.Monoid
+import Data.List
 
 import Syntax.Expression
 import Syntax.Type
@@ -62,6 +64,13 @@ type RenamingIn a b c = a -> RenameMonad c -> RenameMonad (b, c)
 
 runRenameMonad :: RenameMap -> RenameMonad a -> State Int (Either RenameError a)
 runRenameMonad env = flip runReaderT env . runExceptT
+
+renamePair :: Renaming a b -> Renaming c d -> RenamingIn (a, c) (b, d) e
+renamePair f g (a, b) m = do
+  a' <- f a
+  b' <- g b
+  c  <- m
+  return ((a', b'), c)
 
 renameMany :: (forall c. RenamingIn a b c) -> RenamingIn [a] [b] c
 renameMany f vs m =
@@ -254,14 +263,34 @@ renameDeclarations md = renameMap md VariableName renameDeclaration
 renameClassDeclarations :: ModuleName -> RenamingIn (ClassDeclarationMap SyntaxName) (ClassDeclarationMap CoreName) c
 renameClassDeclarations md = renameMapIn md TypeClassName (renameClassDeclaration md)
 
+renameInstanceDeclaration :: ModuleName -> RenamingIn (InstanceDeclaration SyntaxName) (InstanceDeclaration CoreName) c
+renameInstanceDeclaration mn (InstanceDeclaration vs decls) m = do
+  (vs', ()) <- renameMany (renameTypeVariableName mn) vs $ return ()
+  decls' <- fmap Map.fromDistinctAscList $ forM (Map.toList decls) $ \(k, e) -> do
+    QName _ VariableName k' <- lookupRename (QName [] VariableName k)
+    e' <- renameDeclaration e
+    return (k', e')
+  c <- m
+  return (InstanceDeclaration vs' decls', c)
+
+renameInstanceDeclarations :: ModuleName -> RenamingIn (InstanceDeclarationMap SyntaxName) (InstanceDeclarationMap CoreName) c
+renameInstanceDeclarations mn mp m = do
+  let keys  = Map.keys mp
+      elems = Map.elems mp
+  (ks, (es, mv)) <- renameMany (renamePair lookupRename renameMonoType) keys
+                    $ renameMany (renameInstanceDeclaration mn) elems m
+  let kes = sortBy (curry $ uncurry compare . (fst *** fst)) (zip ks es)
+  when (not . null . filter (uncurry (==)) $ zip (fmap fst kes) (tail $ fmap fst kes)) $ throwError undefined
+  return (Map.fromDistinctAscList kes, mv)
+
 renameTypeDeclarations :: ModuleName -> RenamingIn (TypeDeclarationMap SyntaxName) (TypeDeclarationMap CoreName) c
 renameTypeDeclarations md = renameMapIn md TypeConstructorName (renameTypeDeclaration md)
 
 renameModule :: Module SyntaxName -> RenameMonad (RenameMap, Module CoreName)
-renameModule (Module mn is ds cs _ bs) = do
-  (ds', (cs', (bs', rMap))) <- renameTypeDeclarations mn ds
+renameModule (Module mn is ds cs ids bs) = do
+  (ds', (cs', (bs', (ids', rMap)))) <- renameTypeDeclarations mn ds
                         $ renameClassDeclarations mn cs
                         $ renameDeclarations mn bs
+                        $ renameInstanceDeclarations mn ids
                         $ ask
-  traceShow rMap $ return ()
-  return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' cs' Map.empty bs')
+  return $ (Map.filterWithKey (\n _ -> case n of { QName mn' _ _ | mn == mn' -> True; _ -> False }) rMap, Module mn is ds' cs' ids' bs')

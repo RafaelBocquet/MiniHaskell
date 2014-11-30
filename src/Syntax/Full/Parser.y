@@ -151,6 +151,8 @@ qsymId : tsymId { QName (fst $ identifierName $1) VariableName (UserName $ snd $
        | tqsymId { QName (fst $ identifierName $1) VariableName (UserName $ snd $ identifierName $1) }
 qsymconId : tsymconId { QName (fst $ identifierName $1) ConstructorName (UserName $ snd $ identifierName $1) }
           | tqsymconId { QName (fst $ identifierName $1) ConstructorName (UserName $ snd $ identifierName $1) }
+qtcId : tconId { QName (fst $ identifierName $1) TypeClassName (UserName $ snd $ identifierName $1) }
+      | tqconId { QName (fst $ identifierName $1) TypeClassName (UserName $ snd $ identifierName $1) }
 
 qtyvarId : tvarId { QName (fst $ identifierName $1) TypeVariableName (UserName $ snd $ identifierName $1) }
          | tqvarId { QName (fst $ identifierName $1) TypeVariableName (UserName $ snd $ identifierName $1) }
@@ -199,8 +201,11 @@ topDeclaration :: { [TopDeclaration] }
                -- | 'newtype' context simpletype '=' conId list(atype) { 0 }
                | 'class' {- simplecontext -} conId varId option(preceded('where', delimited('{', separated_list(classDeclaration, nonempty_list(';')), '}')))
                     { [TopClassDeclaration $2 (ClassDeclaration $3 $ maybe Map.empty (Map.fromList . concat) $4 )] }
-               | 'instance' {- simplecontext -} qconId instance -- option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}')))
-                    { [TopInstanceDeclaration $2 (fst $3) (InstanceDeclaration (snd $3) Map.empty)] }
+               | 'instance' {- simplecontext -} qtcId instance option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}')))
+                    {% do
+                      decls <- makeDeclarationMap $ maybe Map.empty (foldr addBinding Map.empty) $4
+                      return [TopInstanceDeclaration $2 (fst $3) (InstanceDeclaration (snd $3) decls)]
+                    }
             -- | 'default' { 0 }
                | declaration { fmap TopVariableDeclaration $1 }
 
@@ -286,8 +291,8 @@ instance :: { (MonoType SyntaxName, [SyntaxName]) }
          | '[' varId ']'                                         { (TyConstant (QName ["Primitive"] TypeConstructorName (UserName "[]")), [$2]) }
          | '(' varId '->' varId ')'                               { (TyArrow, [$2, $4]) }
 
-instanceDeclaration : leftHandSide rightHandSide { undefined }
---                  | varId rightHandSide        { 0 }
+instanceDeclaration :: { VariableDeclaration }
+                    : leftHandSide rightHandSide { VariableDeclaration (fst $1) (snd $1) $2 }
 
 -- Expressions
 
@@ -304,8 +309,8 @@ expression :: { Expression SyntaxName }
 expression10 :: { Expression SyntaxName }
              : 'if' expression 'then' expression 'else' expression
                   { lll $ ECase $2
-                    [ (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName "True")) []) [], $4)
-                    , (Pattern (PConstructor (QName ["Base"] ConstructorName (UserName "False")) []) [], $6)
+                    [ (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "True")) []) [], $4)
+                    , (Pattern (PConstructor (QName ["Primitive"] ConstructorName (UserName "False")) []) [], $6)
                     ]
                   }
              | '\\'  nonempty_list(apattern) '->' expression

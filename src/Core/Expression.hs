@@ -13,14 +13,16 @@ import Syntax.Name
 
 import qualified Syntax.Expression as S
 
-data Expression' = EInteger Int
-                 | EChar Char
-                 | EVariable QCoreName
-                 | EApplication Expression Expression
-                 | ELambda CoreName Expression
-                 | ELet (Map CoreName (PolyType CoreName, Expression)) Expression
-                 | ECase Expression PatternGroup
-                 deriving (Show)
+data AExpression' t = EInteger Int
+                    | EChar Char
+                    | EVariable QCoreName
+                    | EApplication (AExpression t) (AExpression t)
+                    | ELambda CoreName (AExpression t)
+                    | ELet (ABindingMap t) (AExpression t)
+                    | ECase (AExpression t) (APatternGroup t)
+                    deriving (Show)
+type TypeClassExpression' = AExpression' (MonoType CoreName, [(QCoreName, MonoType CoreName)])
+type Expression' = AExpression' (MonoType CoreName)
 
 data PatternGroupType = DataPatternGroupType QCoreName
                       | IntPatternGroupType
@@ -28,16 +30,24 @@ data PatternGroupType = DataPatternGroupType QCoreName
                       | NoPatternGroupType
                       deriving (Show)
 
-data PatternGroup = PData (Map QCoreName ([CoreName], Expression)) (Maybe Expression)
-                  | PInt (Map Int (Expression)) (Maybe Expression)
-                  | PChar (Map Char (Expression)) (Maybe Expression)
-                  deriving (Show)
+data APatternGroup t = PData (Map QCoreName ([CoreName], AExpression t)) (Maybe (AExpression t))
+                     | PInt (Map Int (AExpression t)) (Maybe (AExpression t))
+                     | PChar (Map Char (AExpression t)) (Maybe (AExpression t))
+                     deriving (Show)
+type TypeClassPatternGroup = APatternGroup (MonoType CoreName, [(QCoreName, MonoType CoreName)])
+type PatternGroup = APatternGroup (MonoType CoreName)
 
-data Expression = Expression
-  { expressionType  :: MonoType CoreName
-  , expressionValue :: Expression'
+data AExpression t = Expression
+  { expressionType  :: t
+  , expressionValue :: AExpression' t
   }
   deriving (Show)
+
+type TypeClassExpression = AExpression (MonoType CoreName, [(QCoreName, MonoType CoreName)])
+type Expression          = AExpression (MonoType CoreName)
+
+typeclassExpressionType :: TypeClassExpression -> MonoType CoreName
+typeclassExpressionType = fst . expressionType
 
 expressionFreeVariables :: Expression -> Set CoreName
 expressionFreeVariables = expressionFreeVariables' . expressionValue
@@ -55,6 +65,18 @@ expressionFreeVariables = expressionFreeVariables' . expressionValue
                                            (Set.fromList $ fmap fst $ Map.toList ds)
     expressionFreeVariables' (ECase e p) = Set.union (expressionFreeVariables e) (patternFreeVariables p)
 
+makeAbstraction :: [(CoreName, MonoType CoreName)] -> Expression -> Expression
+makeAbstraction []             e = e
+makeAbstraction ((x, ty) : xs) e =
+  let e' = makeAbstraction xs e in
+  Expression (makeTypeApplication TyArrow [ty, expressionType e']) (ELambda x e')
+
+makeApplication :: Expression -> [Expression] -> Expression
+makeApplication f []       = f
+makeApplication f (x : xs) =
+  let (TyApplication (TyApplication TyArrow _) b) = expressionType f in
+  makeApplication (Expression b (EApplication f x)) xs
+
 patternFreeVariables :: PatternGroup -> Set CoreName
 patternFreeVariables (PData alts df) = Set.union
                                        (Set.unions $ fmap (\(_, (vs, e)) -> Set.difference (expressionFreeVariables e) (Set.fromList vs)) (Map.toList alts))
@@ -70,11 +92,19 @@ declarationFreeVariables :: Declaration -> Set CoreName
 declarationFreeVariables (Declaration e)          = expressionFreeVariables e
 declarationFreeVariables (PrimitiveDeclaration _) = Set.empty
 
-data Declaration = Declaration Expression
-                 | PrimitiveDeclaration S.PrimitiveDeclaration
-                 deriving (Show)
+type ABindingMap t = Map CoreName (PolyType CoreName, AExpression t)
+type TypeClassBindingMap = ABindingMap (MonoType CoreName, [(QCoreName, MonoType CoreName)])
+type BindingMap = ABindingMap (MonoType CoreName)
 
-type DeclarationMap = Map CoreName (PolyType CoreName, Declaration)
+data ADeclaration t = Declaration (AExpression t)
+                    | PrimitiveDeclaration S.PrimitiveDeclaration
+                    deriving (Show)
+type TypeClassDeclaration = ADeclaration (MonoType CoreName, [(QCoreName, MonoType CoreName)])
+type Declaration = ADeclaration (MonoType CoreName)
+
+type ADeclarationMap t = Map CoreName (PolyType CoreName, ADeclaration t)
+type TypeClassDeclarationMap = ADeclarationMap (MonoType CoreName, [(QCoreName, MonoType CoreName)])
+type DeclarationMap = ADeclarationMap (MonoType CoreName)
 
 
 data DataConstructor          = DataConstructor

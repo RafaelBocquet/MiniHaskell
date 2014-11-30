@@ -2,6 +2,7 @@ module Desugar.Unify where
 
 import Control.Monad.Except
 import Control.Monad.State
+import Control.Monad.Reader
 import Control.Applicative
 
 import Data.Map (Map)
@@ -15,11 +16,12 @@ import Syntax.Name
 
 import Debug.Trace
 
-data UnifyMap  = UnifyMap
-  { unifyTypeMap       :: Map CoreName (MonoType CoreName)
-  , unifyConstraintMap :: Map CoreName (Set QCoreName)
-  , unifyKindMap       :: Map CoreName (Kind CoreName)
-  }
+data UnifyState  = UnifyState
+                   { unifyTypeMap       :: Map CoreName (MonoType CoreName)
+                   , unifyConstraintMap :: Map CoreName (Set QCoreName)
+                   , unifyKindMap       :: Map CoreName (Kind CoreName)
+                   , unifyInstances     :: Map (QCoreName, MonoType CoreName) ()
+                   }
 
 data UnifyError = UnifyError (MonoType CoreName) (MonoType CoreName)
                 | InfiniteType CoreName (MonoType CoreName)
@@ -37,10 +39,11 @@ instance Show UnifyError where
   show (InfiniteKind v k)            = "Kind " ++ show k ++ " is infinite, because of kind variable " ++ show v
 
 
-type UnifyMonad = StateT UnifyMap (Except UnifyError)
+type UnifyMonad = StateT UnifyState (Except UnifyError)
 
 runUnifyMonad :: UnifyMonad a -> Either UnifyError a
-runUnifyMonad = runExcept . flip evalStateT (UnifyMap Map.empty Map.empty Map.empty)
+runUnifyMonad = runExcept
+                . flip evalStateT (UnifyState Map.empty Map.empty Map.empty Map.empty)
 
 unifyKind :: Kind CoreName -> Kind CoreName -> UnifyMonad ()
 unifyKind k1 k2 = unifyKind' k1 k2 `catchError` (\e -> throwError $ InKindUnification k1 k2 e)
@@ -67,6 +70,8 @@ unifyKind k1 k2 = unifyKind' k1 k2 `catchError` (\e -> throwError $ InKindUnific
     unifyKind' k1 (KVariable v2)                                         = unifyKind (KVariable v2) k1
     unifyKind' k1 k2                                                     = throwError $ UnifyKindError k1 k2
 
+-- TODO : compression opt
+
 unifyType :: MonoType CoreName -> MonoType CoreName -> UnifyMonad ()
 unifyType t1 t2 = unifyType' t1 t2 `catchError` (\e -> throwError $ InUnification t1 t2 e)
   where
@@ -81,11 +86,11 @@ unifyType t1 t2 = unifyType' t1 t2 `catchError` (\e -> throwError $ InUnificatio
       c2 <- Map.lookup v2 . unifyConstraintMap <$> get
       case (c1, c2) of
         (Nothing, Nothing) -> return ()
-        (Just c1, Nothing) -> addConstraints v2 c1
-        (Nothing, Just c2) -> addConstraints v1 c2
+        (Just c1, Nothing) -> addConstraints (TyVariable v2) c1
+        (Nothing, Just c2) -> addConstraints (TyVariable v1) c2
         (Just c1, Just c2) -> do
-          addConstraints v1 c2
-          addConstraints v2 c1
+          addConstraints (TyVariable v1) c2
+          addConstraints (TyVariable v2) c1
       x1 <- Map.lookup v1 . unifyTypeMap <$> get
       x2 <- Map.lookup v2 . unifyTypeMap <$> get
       case (x1, x2) of
@@ -95,28 +100,54 @@ unifyType t1 t2 = unifyType' t1 t2 `catchError` (\e -> throwError $ InUnificatio
         (Just x1, Just x2) -> unifyType x1 x2
     unifyType' (TyVariable v1) t1 | Set.member v1 (freeTypeVariables t1) = throwError $ InfiniteType v1 t1
                                   | otherwise                            = do
+      c1 <- Map.lookup v1 . unifyConstraintMap <$> get
+      case c1 of
+       Nothing -> return ()
+       Just c1 -> addConstraints t1 c1
       x1 <- Map.lookup v1 . unifyTypeMap <$> get
       case x1 of
         Nothing            -> modify $ \s -> s { unifyTypeMap              = Map.insert v1 t1 (unifyTypeMap s) }
-                                             -- Add Constraints to t1...
         Just x1            -> unifyType x1 t1
     unifyType' t1 v1@(TyVariable _)                                      = unifyType v1 t1
     unifyType' t1 t2                                                     = throwError $ UnifyError t1 t2
 
-addConstraints :: CoreName -> Set QCoreName -> UnifyMonad ()
-addConstraints v c = modify $ \s -> s { unifyConstraintMap = Map.insertWith Set.union v c (unifyConstraintMap s) }
+addInstance :: QCoreName -> MonoType CoreName -> UnifyMonad ()
+addInstance cls ty = modify $ \s -> s { unifyInstances = Map.insert (cls, ty) () (unifyInstances s) }
+
+addConstraints :: MonoType CoreName -> Set QCoreName -> UnifyMonad ()
+addConstraints (TyVariable v) c = modify $ \s -> s { unifyConstraintMap = Map.insertWith Set.union v c (unifyConstraintMap s) }
+addConstraints t cs             = do
+  let (tc, tas) = typeApplicationDecompose t []
+  forM_ (Set.toList cs) $ \c -> do
+    toName <- Map.lookup (c, tc) . unifyInstances <$> get
+    case toName of
+     Nothing -> error $ "Can't instantiate TC " ++ show c ++ " with tycon " ++ show tc
+     Just ()  -> return ()
+
+getConstraints :: CoreName -> UnifyMonad (Set QCoreName)
+getConstraints t = do
+  c <- Map.lookup t . unifyConstraintMap <$> get
+  case c of
+   Nothing -> return Set.empty
+   Just cs -> return cs
 
 substituteType :: MonoType CoreName -> UnifyMonad (MonoType CoreName)
 substituteType TyArrow             = return TyArrow
 substituteType (TyConstant n)      = return $ TyConstant n
 substituteType (TyApplication a b) = liftM2 TyApplication (substituteType a) (substituteType b)
 substituteType (TyVariable v)      = do
-  x <- Map.lookup v . unifyTypeMap <$> get
+  x <- Map.lookup v . unifyTypeMap       <$> get
+  c <- Map.lookup v . unifyConstraintMap <$> get
   case x of
     Nothing -> return $ TyVariable v
     Just x  -> do
+      case c of
+       Nothing -> return ()
+       Just c  -> do
+         when (not (Set.null c)) $ traceShow (x, c) $ return ()
+         addConstraints x c
       x' <- substituteType x
-      modify $ \s -> s { unifyTypeMap = Map.insert v x' (unifyTypeMap s) }
+      modify $ \s -> s { unifyTypeMap = Map.insert v x' (unifyTypeMap s) } 
       return x'
 
 unifyMonoType :: MonoType CoreName -> MonoType CoreName -> UnifyMonad (MonoType CoreName)

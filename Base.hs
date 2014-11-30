@@ -45,8 +45,9 @@ class Eq a where
  -- Char a /= Char b = charNE_prim a b
 
 instance Eq Int where
-  Int a == Int b = intEQ_prim a b
+  (==) (Int a) (Int b) = intEQ_prim a b
 
+tst = 1 == 5
   
 -- class Ord Char where
 --  Char a < Char b = charLT_prim a b
