@@ -16,6 +16,9 @@ updatePosition :: Position -> Char -> Position
 updatePosition (Position a r c) '\n' = Position (a+1) (r+1) 1
 updatePosition (Position a r c) _ = Position (a+1) r (c+1)
 
+showPosition :: String -> Position -> String
+showPosition fn (Position _ r c) = "File " ++ fn ++ ", line " ++ show r ++ ", characters " ++ show c ++ "-" ++ show c ++ ":\n"
+
 -- Location
 
 data Location = Location
@@ -23,6 +26,9 @@ data Location = Location
   , locationLength :: Int
   }
   deriving(Show)
+
+showLocation :: String -> Location -> String 
+showLocation fn (Location (Position _ r c) l) = "File " ++ fn ++ ", line " ++ show r ++ ", characters " ++ show c ++ "-" ++ show (c + l - 1) ++ ":\n"
 
 class Located a where
   locate :: a -> Location

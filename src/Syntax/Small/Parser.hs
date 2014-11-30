@@ -19,9 +19,9 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 data ParseError = ParseError
-                | EmptyLambda
-                | EmptyLet
-                | EmptyDo
+                | EmptyLambda Location
+                | EmptyLet Location
+                | EmptyDo Location
                 | DuplicateBinding SyntaxName
                 | DuplicateCasePattern SyntaxName
                 | ExpectedToken Token' Token
@@ -33,6 +33,21 @@ data ParseError = ParseError
                 | EquationDifferentArguments SyntaxName Location [SyntaxName] [SyntaxName]
                 | UnexpectedToken Token
                 deriving (Show)
+
+
+showParseError :: String -> ParseError -> String
+showParseError fn (EmptyLambda l)         = showLocation fn l ++ "\tMissing lambda variables."
+showParseError fn (EmptyLet l)            = showLocation fn l ++ "\tEmpty let bindings block."
+showParseError fn (EmptyDo l)             = showLocation fn l ++ "\tEmpty do block."
+showParseError fn (ExpectedToken t t')    = showLocation fn (locate t') ++ "\tExpected token " ++ show t ++ ", got " ++ show (delocate t') ++ "."
+showParseError fn (ExpectedIdentifier0 t) = showLocation fn (locate t) ++ "\tExpected identifier_0 token, got " ++ show (delocate t) ++ "."
+showParseError fn (ExpectedIdentifier1 t) = showLocation fn (locate t) ++ "\tExpected identifier_1 token, got " ++ show (delocate t) ++ "."
+showParseError fn (ExpectedInteger t)     = showLocation fn (locate t) ++ "\tExpected integer token, got " ++ show (delocate t) ++ "."
+showParseError fn (ExpectedString t)      = showLocation fn (locate t) ++ "\tExpected string token, got " ++ show (delocate t) ++ "."
+showParseError fn (ExpectedChar t)        = showLocation fn (locate t) ++ "\tExpected char token, got " ++ show (delocate t) ++ "."
+showParseError fn (UnexpectedToken t)     = showLocation fn (locate t) ++ "\tUnexpected token " ++ show t ++ "."
+showParseError fn e                       = show e -- ...
+
 
 data ParseState = ParseState
   { parserInput    :: [Token]
@@ -341,8 +356,8 @@ parseExpression = do
 parseLambda :: Parser (Expression SyntaxName)
 parseLambda = do
   p1 <- getPosition
-  expectToken TkLambda
-  xs <- parseMany1 parseIdentifier1 (isNotToken TkArrow) EmptyLambda
+  l <- expectToken TkLambda
+  xs <- parseMany1 parseIdentifier1 (isNotToken TkArrow) (EmptyLambda l)
   expectToken TkArrow
   e <- parseExpression
   p2 <- getPosition
@@ -368,12 +383,12 @@ parseIf = do
 parseLet :: Parser (Expression SyntaxName)
 parseLet = do
   p1 <- getPosition
-  expectToken TkLet
+  l <- expectToken TkLet
   t <- delocate <$> nextToken
   bs <- makeBindings =<< case t of
     TkLBrace -> do
       expectToken TkLBrace
-      bs <- parseManySepOpt1 parseBinding (expectToken TkSemiColon) isIdentifier1 (isToken TkSemiColon) EmptyLet
+      bs <- parseManySepOpt1 parseBinding (expectToken TkSemiColon) isIdentifier1 (isToken TkSemiColon) (EmptyLet l)
       maybeToken TkSemiColon
       expectToken TkRBrace
       return bs
@@ -413,9 +428,9 @@ parseCase = do
 parseDo :: Parser (Expression SyntaxName)
 parseDo = do
   p1 <- getPosition
-  expectToken TkDo
+  l <- expectToken TkDo
   expectToken TkLBrace
-  as <- parseManySepOpt1 parseExpression (expectToken TkSemiColon) (satisfy isExpressionStart) (isToken TkSemiColon) EmptyDo
+  as <- parseManySepOpt1 parseExpression (expectToken TkSemiColon) (satisfy isExpressionStart) (isToken TkSemiColon) (EmptyDo l)
   maybeToken TkSemiColon
   expectToken TkRBrace
   p2 <- getPosition
@@ -488,11 +503,12 @@ parseIdentifier1 = do
     TkIdentifier1 s -> return s
     _               -> throwError $ ExpectedIdentifier1 t
 
-expectToken :: Token' -> Parser ()
+expectToken :: Token' -> Parser Location
 expectToken t = do
   t' <- nextToken
   when (t /= delocate t') (throwError $ ExpectedToken t t')
   consumeToken
+  return (locate t')
 
 maybeToken :: Token' -> Parser ()
 maybeToken t = do

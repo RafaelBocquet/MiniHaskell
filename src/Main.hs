@@ -6,6 +6,8 @@ import Control.Monad.Writer
 import Control.Monad.State
 import Control.Applicative
 
+import Control.Exception (catch, SomeException)
+
 import Syntax.Location
 import Syntax.Name
 import Syntax.Module
@@ -29,6 +31,7 @@ import Desugar.Rename
 
 import System.Environment
 import System.IO
+import System.Exit (exitWith, ExitCode(..))
 
 import Driver.Driver
 
@@ -41,15 +44,13 @@ isFlag _           = False
 
 parseOnlySmall :: String -> IO ()
 parseOnlySmall fn = do
-  putStrLn $ fn ++ " : "
-  putStr "\t"
   str <- readFile fn
   case Small.tokenise str of
-    Left e -> putStrLn.show $ e
+    Left e -> putStrLn . Small.showLexError fn $ e
     Right ts -> do
       case Small.runParser ts Small.parseModule of
-        Left e -> putStrLn.show $ e
-        Right e -> putStrLn $ "GOOD"
+        Left e -> putStrLn . Small.showParseError fn $ e
+        Right e -> return ()
 
 
 typecheckOnlySmall :: [String] -> IO ()
@@ -134,12 +135,12 @@ compileFull fn = do
     f (Right rs) (Right r) = Right $ r : rs
           
 main :: IO ()
-main = do
+main = flip catch (\e -> let _ = e :: SomeException in exitWith $ ExitFailure 2) $ do
   (flags, filenames) <- partition isFlag <$> getArgs
   case ("--parse-only" `elem` flags, "--type-only" `elem` flags, "--full" `elem` flags) of
-    (True, False, False)  -> parseOnlySmall (head filenames)
-    (False, True, False)  -> typecheckOnlySmall filenames
-    (False, False, False) -> compileSmall filenames
-    (False, True, True)   -> typecheckOnlyFull filenames
-    (False, False, True)  -> compileFull filenames
-    _                     -> putStrLn "Usage: cmd [--parse-only | --typecheck-only] [--full] FILENAMES...\nUnless the flag --full is used, the first file in filenames is considered to be a small haskell file."
+    (True, False, False)  | not (null filenames) -> parseOnlySmall (head filenames)
+    (False, True, False)  | not (null filenames) -> typecheckOnlySmall filenames
+    (False, False, False) | not (null filenames) -> compileSmall filenames
+    (False, True, True)   | not (null filenames) -> typecheckOnlyFull filenames
+    (False, False, True)  | not (null filenames) -> compileFull filenames
+    _                     -> putStrLn "Usage: cmd [--parse-only | --type-only] [--full] FILENAMES...\nUnless the flag --full is used, the first file in filenames is considered to be a small haskell file."

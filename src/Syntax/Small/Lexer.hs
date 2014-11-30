@@ -14,8 +14,16 @@ data LexError = LexError Position
               | ExpectedChar Position Char Char
               | BadStringCharacter Position Char
               | BadStringEscape Position Char
-              | UnterminatedComment
+              | UnterminatedComment Position
               deriving (Show)
+
+showLexError :: String -> LexError -> String
+showLexError fn (LexError p)             = showPosition fn p ++ "\tLexical error."
+showLexError fn (UnknownSymbol l s)      = showLocation fn l ++ "\tUnknown symbol '" ++ s ++ "'."
+showLexError fn (ExpectedChar p c c')    = showPosition fn p ++ "\tExpectedChar " ++ show c ++ ", got " ++ show c' ++ "."
+showLexError fn (BadStringCharacter p c) = showPosition fn p ++ "\tBad character " ++ show c ++ " in string literal."
+showLexError fn (BadStringEscape p c)    = showPosition fn p ++ "\tBad character " ++ show c ++ " in string escape sequence."
+showLexError fn (UnterminatedComment p)  = showPosition fn p ++ "\tUnterminated comment."
 
 data LexState = LexState
   { lexerPosition :: Position
@@ -109,7 +117,7 @@ lexToken = do
           consumeChar
           c <- nextChar
           if c == '-'
-            then (delocate <$>) $ consumeChar >> lexMultiLineComment >> lexToken
+            then (delocate <$>) $ consumeChar >> lexMultiLineComment p >> lexToken
             else return TkLBrace
         '}'                     -> consumeChar >> return TkRBrace
         '['                     -> consumeChar >> return TkLBracket
@@ -125,18 +133,18 @@ lexToken = do
       p' <- currentPosition
       return $ Locate (makeLocation p p') tok
 
-lexMultiLineComment :: Lexer ()
-lexMultiLineComment = do
+lexMultiLineComment :: Position -> Lexer ()
+lexMultiLineComment bpos = do
   c <- nextChar
   case c of
-    '\0' -> throwError UnterminatedComment
+    '\0' -> throwError (UnterminatedComment bpos)
     '-'  -> do
       consumeChar
       c <- nextChar
       if c == '}'
         then consumeChar
-        else lexMultiLineComment
-    _    -> consumeChar >> lexMultiLineComment
+        else lexMultiLineComment bpos
+    _    -> consumeChar >> lexMultiLineComment bpos
 
 lexSingleLineComment :: Lexer ()
 lexSingleLineComment = do
