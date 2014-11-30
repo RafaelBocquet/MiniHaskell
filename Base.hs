@@ -24,33 +24,13 @@ module Base where {
 ; (==) (Int a) (Int b) = intEQ_prim a b
 ; (/=) (Int a) (Int b) = intNE_prim a b
 
+-- error is not yet implemented as a primitive
 ; error :: [Char] -> a
 ; error x = error x
-
--- ; (>>=) :: IO a -> (a -> IO b) -> IO b
--- ; (>>=) a b = error a
-
--- ; putChar :: Char -> IO Char
--- ; putChar c = error c
 
 -- Char
 
 ; data Char = Char Char_prim
-
--- ; chr (Int a) = Char (chr_prim a)
--- ; ord (Char a) = Int (ord_prim a)
-
--- Type class
---; class Eq Char where {
---  ; (==) (Char a) (Char b) = charEQ_prim a b
---  ; (/=) (Char a) (Char b) = charNE_prim a b
---; }
---; class Ord Char where
---  ; (<)  (Char a) (Char b) = charLT_prim a b
---  ; (<=) (Char a) (Char b) = charLE_prim a b
---  ; (>)  (Char a) (Char b) = charGT_prim a b
---  ; (>=) (Char a) (Char b) = charGE_prim a b
---; }
 
 -- Maybe
 
@@ -76,18 +56,12 @@ module Base where {
 
 -- Other
 
--- ; sum :: [Int] -> Int
--- ; sum xs = foldl (+) 0 xs
-
 ; if' :: a -> a -> Bool -> a
 ; if' a b True  = a
 ; if' a b False = b
 
 ; count :: Int -> Int -> Int -> [Int]
 ; count f t s = if' (f : []) (f : count (f + s) t s) (f == t)
-
--- ; product :: [Int] -> Int
--- ; product xs = foldl (*) 1 xs
 
 -- Any
 
@@ -109,6 +83,7 @@ module Base where {
 ; ($) :: (a -> b) -> a -> b
 ; ($) f x = f x
 
+-- No string literals yet
 -- ; undefined :: a
 -- ; undefined = error "undefined"
 
@@ -173,7 +148,6 @@ module Base where {
 ; zip _ [] = []
 ; zip (x : xs) (y : ys) = (x, y) : zip xs ys
 
--- ; Typechecking loop ...
 -- ; unzip :: [(a, b)] -> ([a], [b])
 -- ; unzip l = foldr (\(a, b) (as, bs) -> (a : as, b : bs)) ([], []) l
 

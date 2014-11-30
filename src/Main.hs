@@ -46,10 +46,14 @@ parseOnlySmall :: String -> IO ()
 parseOnlySmall fn = do
   str <- readFile fn
   case Small.tokenise str of
-    Left e -> putStrLn . Small.showLexError fn $ e
+    Left e -> do
+      putStrLn . Small.showLexError fn $ e
+      exitWith (ExitFailure 1)
     Right ts -> do
       case Small.runParser ts Small.parseModule of
-        Left e -> putStrLn . Small.showParseError fn $ e
+        Left e -> do
+          putStrLn . Small.showParseError fn $ e
+          exitWith (ExitFailure 1)
         Right e -> return ()
 
 
@@ -135,7 +139,8 @@ compileFull fn = do
     f (Right rs) (Right r) = Right $ r : rs
           
 main :: IO ()
-main = flip catch (\e -> let _ = e :: SomeException in exitWith $ ExitFailure 2) $ do
+main = -- flip catch (\e -> let _ = e :: SomeException in exitWith $ ExitFailure 2) $
+       do
   (flags, filenames) <- partition isFlag <$> getArgs
   case ("--parse-only" `elem` flags, "--type-only" `elem` flags, "--full" `elem` flags) of
     (True, False, False)  | not (null filenames) -> parseOnlySmall (head filenames)
