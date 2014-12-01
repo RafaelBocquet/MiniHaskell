@@ -24,14 +24,9 @@ negate (Int a) = negate_prim a
 -- (==) (Int a) (Int b) = intEQ_prim a b
 (/=) (Int a) (Int b) = intNE_prim a b
 
+-- error is not yet implemented as a primitive
 error :: [Char] -> a
 error x = error x
-
--- ; (>>=) :: IO a -> (a -> IO b) -> IO b
--- ; (>>=) a b = error a
-
--- ; putChar :: Char -> IO Char
--- ; putChar c = error c
 
 -- Char
 
@@ -108,6 +103,7 @@ const x _ = x
 ($) :: (a -> b) -> a -> b
 ($) f x = f x
 
+-- No string literals yet
 -- ; undefined :: a
 -- ; undefined = error "undefined"
 
@@ -171,6 +167,5 @@ zip [] _ = []
 zip _ [] = []
 zip (x : xs) (y : ys) = (x, y) : zip xs ys
 
--- ; Typechecking loop ...
--- ; unzip :: [(a, b)] -> ([a], [b])
--- ; unzip l = foldr (\(a, b) (as, bs) -> (a : as, b : bs)) ([], []) l
+unzip :: [(a, b)] -> ([a], [b])
+unzip l = foldr (\(a, b) (as, bs) -> (a : as, b : bs)) ([], []) l

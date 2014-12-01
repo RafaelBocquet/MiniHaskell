@@ -8,7 +8,7 @@ See the file README for a full copyright notice.
 Loaded: /usr/lib/spim/exceptions.s" > test-out/header
 for test in `ls tests/exec/*.hs`; do
     echo "$test : ";
-    timeout 1s ./dist/build/POPHaskell/POPHaskell $test Base.hs > test-out/`basename -s.hs $test`.s 2> /dev/null;
+    timeout 1s ./dist/build/MiniHaskell/MiniHaskell $test Base.hs > test-out/`basename -s.hs $test`.s 2> /dev/null;
     if [ $? -eq 0 ];
     then
         echo "Compilation ok : $test";
