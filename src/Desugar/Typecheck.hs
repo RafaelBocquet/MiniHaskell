@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Desugar.Typecheck where
 
 import Control.Monad.Except

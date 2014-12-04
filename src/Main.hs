@@ -90,7 +90,7 @@ typecheckOnlyFull fn = do
       Left e -> return (putStrLn.show $ e)
       Right ps -> do
         r <- typecheck (makeModuleMap $ primitiveModule : ps)
-        return $ putStrLn.show $ r
+        return $ putStrLn . C.runPretty . mapM_ id . fmap C.prettyCoreModule . Map.elems $ r
   where
     f (Left e) _           = Left e
     f (Right rs) (Left e)  = Left e
