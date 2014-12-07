@@ -46,10 +46,10 @@ typecheck moduleMap = do
     case renaming of
       Left e                    -> error (show e)
       Right (renameMap, modMap) -> do
-        typechecked <- runTypecheckMonad (Environment Map.empty Map.empty renameMap Map.empty) $
+        typechecked <- runTypecheckMonad (Environment Map.empty Map.empty renameMap Map.empty Map.empty) $
           foldlM
             (\(cTypeMap, cModuleMap) mod -> do
-              (cTypes, cMod) <- globalBindMany cTypeMap $ typecheckModule (fromJust $ Map.lookup mod modMap)
+              (cTypes, cIds, cMod) <- globalBindMany cTypeMap $ typecheckModule (fromJust $ Map.lookup mod modMap)
               return $ (Map.union cTypes cTypeMap, Map.insert mod cMod cModuleMap)
             )
             (Map.empty, Map.empty)

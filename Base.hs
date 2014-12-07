@@ -85,8 +85,8 @@ count f t s = if' (f : []) (f : count (f + s) t s) (f == t)
 
 -- Any
 
-id :: Int -> Int
-id x = head (map (\x -> x + 1) (x : []))
+id :: a -> a
+id x = x
 
 fst :: (a, b) -> a
 fst (x, _) = x

@@ -23,6 +23,7 @@ data Expression' n = EInteger Int
                    deriving (Show)
 type Expression n = Locate (Expression' n)
 
+makeApplication :: Expression n -> [Expression n] -> Expression n
 makeApplication = foldl (\a b -> Locate noLocation $ EApplication a b)
 
 expressionFreeVariables :: Ord n => Expression n -> Set (QName n)

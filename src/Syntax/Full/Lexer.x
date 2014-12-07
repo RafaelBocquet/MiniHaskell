@@ -5,6 +5,8 @@ import Syntax.Full.Token
 import Syntax.Full.Layout
 import Syntax.Location
 
+import Control.Applicative
+
 import Data.Char (isAlpha)
 
 }
@@ -91,11 +93,14 @@ $identifierChar = [a-zA-Z0-9_\']
 @moduleName @conId { alexToken (\(splitModuleName -> s) -> TkIdentifier (init s) (last s)) }
 @moduleName @symId { alexToken (\(splitModuleName -> s) -> TkIdentifier (init s) (last s)) }
 
-@integer    { alexToken (const (TkInteger 0)) }
+@integer    { alexToken (TkInteger . read) }
 \'a\'       { alexSimpleToken (TkChar 'a') }
 
 {
 
+instance Functor Alex
+instance Applicative Alex
+  
 data AlexUserState = AlexUserState
 
 alexInitUserState :: AlexUserState
