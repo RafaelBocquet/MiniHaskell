@@ -34,6 +34,10 @@ $identifierChar = [a-zA-Z0-9_\']
 
 @integer = $digit+
 
+$char = [\ -\~] # [\\\"]
+@char = $char | "\\\\" | "\\n" | "\\\"" | "\\'"
+@string = @char+
+  
 :-
 
 ($white | $newline)+;
@@ -79,6 +83,10 @@ $identifierChar = [a-zA-Z0-9_\']
 "where"    { alexSimpleToken TkWhere }
 "_"        { alexSimpleToken TkUnderscore }
 
+"qualified" { alexSimpleToken TkQualified }
+"as"        { alexSimpleToken TkAs }
+"hiding"    { alexSimpleToken TkHiding }
+
 \(          { alexSimpleToken TkLParen }
 \)          { alexSimpleToken TkRParen }
 \,          { alexSimpleToken TkComma }
@@ -94,7 +102,8 @@ $identifierChar = [a-zA-Z0-9_\']
 @moduleName @symId { alexToken (\(splitModuleName -> s) -> TkIdentifier (init s) (last s)) }
 
 @integer    { alexToken (TkInteger . read) }
-\'a\'       { alexSimpleToken (TkChar 'a') }
+\'@char\'   { alexSimpleToken (TkChar . read) }
+\"@string\" { alexSimpleToken (TkString . read) }
 
 {
 

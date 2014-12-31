@@ -27,17 +27,26 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+data ModuleImportSpec n = InpVar n
+                        | InpAll n
+                        | InpFilter n [n]
+
 data ModuleImport n = ModuleImport
                       { _importQualified :: Bool
                       , _importName      :: ModuleName
                       , _importAlias     :: ModuleName
-                      , _importList      :: Maybe [n]
-                      , _importHiding    :: [n]
+                      , _importList      :: Maybe [ModuleImportSpec n]
+                      , _importHiding    :: [ModuleImportSpec n]
                       }
 makeLenses ''ModuleImport
 
+data ModuleExportSpec n = ExpVar n
+                        | ExpAll n
+                        | ExpFilter n [n]
+                        | ExpModule ModuleName
+
 data DataConstructor n    = DataConstructor
-                            { _dataConstructorName :: n
+                            { _dataConstructorName  :: n
                             , _dataConstructorTypes :: [Type n ()]
                             }
 data TypeDeclaration n    = DataDeclaration [n] [DataConstructor n]
@@ -51,8 +60,9 @@ data InstanceDeclaration n = InstanceDeclaration
 
 data Module n = Module
                 { _moduleName                 :: ModuleName
+                , _moduleExport               :: Maybe [ModuleExportSpec n]
                 , _moduleImportList           :: [ModuleImport n]
-                , _moduleDeclarations         :: DeclarationMap n (Expr (Type n ()) n ())
+                , _moduleDeclarations         :: DeclarationMap n (Expr n ())
                 , _moduleTypeDeclarations     :: TypeDeclarationMap n
                 , _moduleClassDeclarations    :: ClassDeclarationMap n
                 , _moduleInstanceDeclarations :: [InstanceDeclaration n]
@@ -61,7 +71,7 @@ makeLenses ''Module
   
 data ModuleBody n = ModuleBody 
                     { _moduleBodyImportList           :: [ModuleImport n]
-                    , _moduleBodyDeclarations         :: DeclarationMap n (Expr (Type n ()) n ())
+                    , _moduleBodyDeclarations         :: DeclarationMap n (Expr n ())
                     , _moduleBodyTypeDeclarations     :: TypeDeclarationMap n
                     , _moduleBodyClassDeclarations    :: ClassDeclarationMap n
                     , _moduleBodyInstanceDeclarations :: [InstanceDeclaration n]

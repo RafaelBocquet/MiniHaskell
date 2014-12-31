@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Rename.Syntactic where
 
@@ -25,23 +26,31 @@ import Control.Monad.State hiding (forM)
 import Control.Monad.Reader hiding (forM)
 
 import Control.Lens
+import Control.Lens.Bitraversal
 
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-renameSyntactic :: (Syntactic e, Bitraversable e) => Ann (e Name) a -> Rename (Ann (e UniqueName) a)
-renameSyntactic (Ann a e) = do
+type RenameBitraversal e f a = (Name -> Rename UniqueName) ->
+                               ((Set Name, Ann (e Name) a) -> Rename (Ann (f UniqueName) a)) ->
+                               (e Name (Set Name, Ann (e Name) a)) ->
+                               Rename (f UniqueName (Ann (f UniqueName) a))
+
+renameSyntactic :: (Syntactic e) =>
+                   RenameBitraversal e f a ->
+                   Ann (e Name) a -> Rename (Ann (f UniqueName) a)
+renameSyntactic bt (Ann a e) = do
   let (vs, e') = syntacticBinders e
   bs <- fmap Map.fromList
         $ forM (Set.toList vs) $ \v -> fresh v
                                        & fmap (v,)
   e'' <- e'
-         & bitraverse
+         & bt
          renameLookup
          (\(ws, u) -> do
              let bs' = Map.filterWithKey (\k _ -> k `Set.member` ws) bs
-             localBind bs $ renameSyntactic u
+             localBind bs $ renameSyntactic bt u
          )
   return $ Ann a e''

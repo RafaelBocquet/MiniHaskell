@@ -8,7 +8,7 @@ import Data.Char
 
 data Token' = TkIdentifier [String] String
             -- Literals
-            | TkInteger Int
+            | TkInteger Integer
             | TkChar Char
             | TkString String
             -- Keywords
@@ -36,6 +36,10 @@ data Token' = TkIdentifier [String] String
             | TkType
             | TkWhere
             | TkUnderscore
+
+            | TkQualified
+            | TkAs
+            | TkHiding
             -- Symbols
             | TkDoubleDot
             | TkColon
@@ -110,7 +114,7 @@ isQSymbolConstructorIdentifier _                                      = False
 identifierName :: Token -> ([String], String)
 identifierName (tokenToken -> TkIdentifier a b) = (a, b)
 
-integerValue :: Token -> Int
+integerValue :: Token -> Integer
 integerValue (tokenToken -> TkInteger i) = i
 
 charValue :: Token -> Char

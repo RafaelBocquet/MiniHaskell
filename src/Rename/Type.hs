@@ -31,3 +31,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
+
+renameType :: Type Name a -> Rename (Type UniqueName a)
+renameType = renameSyntactic bitraverse

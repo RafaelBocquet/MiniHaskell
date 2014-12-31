@@ -11,6 +11,7 @@ import Syntax.Type
 
 import Rename.Monad
 import Rename.Syntactic
+import Rename.Type
 
 import Data.Maybe
 
@@ -33,18 +34,5 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-renameExpression :: Ann (Expr' (Type Name ()) Name) a -> Rename (Ann (Expr' (Type UniqueName ()) UniqueName) a)
-renameExpression (Ann a e) = do
-  let (vs, e') = syntacticBinders e
-  bs <- fmap Map.fromList
-        $ forM (Set.toList vs) $ \v -> fresh v
-                                       & fmap (v,)
-  e'' <- e'
-         & tritraverse
-         renameSyntactic
-         renameLookup
-         (\(ws, u) -> do
-             let bs' = Map.filterWithKey (\k _ -> k `Set.member` ws) bs
-             localBind bs $ renameExpression u
-         )
-  return $ Ann a e''
+renameExpression :: Expr Name a -> Rename (Expr UniqueName a)
+renameExpression = renameSyntactic (tritraverse renameType)

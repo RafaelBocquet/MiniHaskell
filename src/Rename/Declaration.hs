@@ -35,7 +35,7 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-renameDeclarationMap :: DeclarationMap Name (Expr (Type Name ()) Name ()) -> Rename (DeclarationMap UniqueName (Expr (Type UniqueName ()) UniqueName ()))
+renameDeclarationMap :: DeclarationMap Name (Expr Name ()) -> Rename (DeclarationMap UniqueName (Expr UniqueName ()))
 renameDeclarationMap ds = do
   bs <- freshMany $ Map.keys ds
   localBind bs

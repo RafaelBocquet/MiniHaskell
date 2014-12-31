@@ -42,7 +42,7 @@ import qualified Data.Map as Map
 
 
 renameModule :: Module Name -> Rename (Module UniqueName)
-renameModule (Module mn imps decls tdecls cdecls idecls) = do
+renameModule (Module mn exps imps decls tdecls cdecls idecls) = do
   decls' <- renameDeclarationMap decls
-  return $ Module mn undefined decls' undefined undefined undefined
+  return $ Module mn undefined undefined decls' undefined undefined undefined
 

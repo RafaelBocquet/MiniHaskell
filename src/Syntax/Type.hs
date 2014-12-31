@@ -1,12 +1,14 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections, TypeSynonymInstances #-}
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Syntax.Type where
 
 import Annotation
 import Syntactic
+
+import Syntax.Name
 
 import Data.List
 import Data.Maybe
@@ -30,41 +32,37 @@ import qualified Data.Map as Map
 import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
 import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
 
--- TypeConstant
-
-data TypeConstant = TyArrow
-                  | TyCon -- [(Variance, Kind)] Kind
-
 -- Type
 
 data Type' n e = TyVar' n
                | TyApp' e e
-               | TyConst' TypeConstant
+               | TyCon' n
                | TyForall' n e
                deriving (Functor, Foldable, Traversable)
-type Type n a = Ann (Type' n) a
+type Type n a = Ann (Type' n) ((), a)
 
 instance Bifunctor Type' where
   first f (TyVar' x)      = TyVar' (f x)
   first f (TyApp' a b)    = TyApp' a b
-  first f (TyConst' c)    = TyConst' c
+  first f (TyCon' n)      = TyCon' (f n)
   first f (TyForall' x t) = TyForall' (f x) t
   second = fmap
 
 instance Bifoldable Type' where
   bifoldMap f g (TyVar' x)      = f x
   bifoldMap f g (TyApp' a b)    = g a <> g b
-  bifoldMap f g (TyConst' c)    = mempty
+  bifoldMap f g (TyCon' n)      = f n
   bifoldMap f g (TyForall' x t) = f x <> g t
 
 instance Bitraversable Type' where
   bitraverse f g (TyVar' x)      = TyVar' <$> f x
   bitraverse f g (TyApp' a b)    = TyApp' <$> g a <*> g b
-  bitraverse f g (TyConst' c)    = pure $ TyConst' c
+  bitraverse f g (TyCon' n)      = TyCon' <$> f n
   bitraverse f g (TyForall' x t) = TyForall' <$> f x <*> g t
 
 instance Syntactic Type' where
   syntacticVariables (TyVar' x) = Set.singleton x
+  syntacticVariables (TyCon' c) = Set.singleton c
   syntacticVariables _          = Set.empty
 
   syntacticBinders (TyForall' x t) = ( Set.singleton x
@@ -79,25 +77,10 @@ viewType (a :$ acc) vs     = (vs, a, acc)
 largeType :: Type n a -> Bool
 largeType (TyVar _)       = False
 largeType (TyApp _ _)     = True
-largeType (TyConst _)     = False
+largeType (TyCon _)       = False
 largeType (TyForall _ a)  = largeType a
 
 instance Pretty n => Pretty (Type n a) where
-  pPrint (viewType ?? [] -> (vs, TyConst TyArrow, [a, b])) =
-    hsep
-    [ if null vs
-      then mempty
-      else hsep
-           [ text "∀"
-           , hsep $ fmap pPrint vs
-           , text "."
-           ]
-    , if largeType a
-      then parens $ pPrint a
-      else pPrint a
-    , text "->"
-    , pPrint b
-    ]
   pPrint (viewType ?? [] -> (vs, tcon, tas))               =
     hsep
     [ if null vs
@@ -119,7 +102,7 @@ instance Pretty n => Pretty (Type n a) where
 
 pattern TyVar x      <- Ann _ (TyVar' x)
 pattern TyApp f t    <- Ann _ (TyApp' f t)
-pattern TyConst c    <- Ann _ (TyConst' c)
+pattern TyCon c      <- Ann _ (TyCon' c)
 pattern TyForall x a <- Ann _ (TyForall' x a)
 
 viewTypeApplication :: Type n a -> [Type n a] -> (Type n a, [Type n a])
@@ -128,11 +111,11 @@ viewTypeApplication a           acc = (a, acc)
 
 pattern t :$ ts <- (flip viewTypeApplication [] -> (t, ts))
 
-makeTypeApplication :: Type n () -> [Type n ()] -> Type n ()
+makeTypeApplication :: InductiveAnnotable (Type' n) a => Type n a -> [Type n a] -> Type n a
 makeTypeApplication = foldl ((fmap.fmap) ann TyApp')
 
-arrowType :: Type n () -> Type n () -> Type n ()
-arrowType a b = makeTypeApplication (ann $ TyConst' TyArrow) [a, b]
+arrowType :: InductiveAnnotable (Type' Name) a => Type Name a -> Type Name a -> Type Name a
+arrowType a b = makeTypeApplication (ann $ TyCon' $ Name NsTyCon (ModuleName ["Primitive"]) "->") [a, b]
 
 -- Variance
 

@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections #-}
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Syntax.Expression where
 
@@ -37,8 +38,10 @@ data Expr' ty n e = EVar' n
                   | ELet' [(n, e)] e
                   | ECase' e [(Pat n, e)] (Maybe e)
                   | EAnnot' ty e
+                  | EInt' Integer
+                  | EChar' Char
                   deriving (Functor, Foldable, Traversable)
-type Expr ty n a = Ann (Expr' ty n) a
+type Expr n a = Ann (Expr' (Type n ()) n) ((), a)
 
 instance Trifunctor Expr' where
   trimap f g h (EVar' x)        = EVar' (g x)
@@ -47,6 +50,8 @@ instance Trifunctor Expr' where
   trimap f g h (ELet' bs e)     = ELet' (fmap (bimap g h) bs) (h e)
   trimap f g h (ECase' e cs df) = ECase' (h e) (fmap (over _1 (fmap g) . over _2 h) cs) (fmap h df)
   trimap f g h (EAnnot' ty e)   = EAnnot' (f ty) (h e)
+  trimap f g h (EInt' i)        = EInt' i
+  trimap f g h (EChar' c)       = EChar' c
 
 instance Trifoldable Expr' where
   trifoldMap f g h (EVar' x)        = g x
@@ -55,6 +60,8 @@ instance Trifoldable Expr' where
   trifoldMap f g h (ELet' bs e)     = mconcat (fmap (bifoldMap g h) bs) <> h e
   trifoldMap f g h (ECase' e cs df) = h e <> mconcat (fmap (bifoldMap (foldMap g) h) cs) <> foldMap h df
   trifoldMap f g h (EAnnot' ty e)   = f ty <> h e
+  trifoldMap f g h (EInt' _)        = mempty
+  trifoldMap f g h (EChar' _)       = mempty
   
 instance Tritraversable Expr' where
   tritraverse f g h (EVar' x)        = EVar'   <$> g x
@@ -63,6 +70,8 @@ instance Tritraversable Expr' where
   tritraverse f g h (ELet' bs e)     = ELet'   <$> traverse (bitraverse g h) bs <*> h e
   tritraverse f g h (ECase' e cs df) = ECase'  <$> h e <*> traverse (bitraverse (traverse g) h) cs <*> traverse h df
   tritraverse f g h (EAnnot' ty e)   = EAnnot' <$> f ty <*> h e
+  tritraverse f g h (EInt' i)        = pure $ EInt' i
+  tritraverse f g h (EChar' c)       = pure $ EChar' c
   
 pattern EVar x        <- Ann _ (EVar' x)
 pattern EApp f t      <- Ann _ (EApp' f t)
@@ -70,6 +79,9 @@ pattern EAbs x a      <- Ann _ (EAbs' x a)
 pattern ELet bs e     <- Ann _ (ELet' bs e)
 pattern ECase e cs df <- Ann _ (ECase' e cs df)
 pattern EAnnot ty e   <- Ann _ (EAnnot' ty e)
+pattern EInt i        <- Ann _ (EInt' i)
+pattern EChar c       <- Ann _ (EChar' c)
+
 
 instance Syntactic (Expr' ty) where
   syntacticVariables (EVar' x) = Set.singleton x
@@ -91,8 +103,15 @@ instance Syntactic (Expr' ty) where
   syntacticBinders e                = (Set.empty, fmap (Set.empty,) e)
 
 data Pat n = PAny
-           | PAs (Pat n)
-           | PCon n (Pat n)
+             { _patternVariables :: [n]
+             }
+           | PCon
+             { _patternConstructor :: n
+             , _patternArguments :: [Pat n]
+             , _patternVariables :: [n]
+             }
            deriving (Functor, Foldable, Traversable)
+
+makeLenses ''Pat
 
 type DeclarationMap n e = Map n e 

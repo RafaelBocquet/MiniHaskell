@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections #-}
-
+{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts #-}
 module Syntactic where
 
 import Annotation
@@ -26,28 +26,10 @@ class Syntactic e where
   syntacticVariables :: Ord n => e n a -> Set n
   syntacticBinders   :: Ord n => e n a -> (Set n, e n (Set n, a))
 
-freeVariablesAnn :: (Syntactic e, Functor (e n), Foldable (e n), Ord n, Monad m) => InductiveAnn (e n) a (Set n) m
-freeVariablesAnn = simpleInductiveAnn $ \(Ann _ e) -> do
-  return
-    $ Set.union
-    (syntacticVariables e)
-    (foldMap
-     (\(bound, Ann (_, subs) _) -> subs `Set.difference` bound)
-     (snd (syntacticBinders e))
-    )
-
--- syntacticRename :: (Ord n, Syntactic e, Bifunctor e, Bitraversable e, MonadFresh m) => (n -> RenameMonad n n' n') -> Ann (e n) a -> RenameMonad n n' (Ann (e n') a)
--- syntacticRename fresh (Ann a e) = do
---   let (vs, e') = syntacticBinders e
---   bs <- fmap Map.fromList
---         $ forM (Set.toList vs) $ \v -> fresh v
---                                        & fmap (v,)
---   e'' <- e'
---          & bitraverse
---         (\n -> fromJust . Map.lookup n <$> ask)
---         (\(ws, u) -> do
---             let bs' = Map.filterWithKey (\k _ -> k `Set.member` ws) bs
---             local (Map.union bs') $ syntacticRename fresh u
---         )
---   return $ Ann a e''
-
+instance (Syntactic e, Functor (e n), Foldable (e n), Ord n) => InductiveAnnotation (e n) a (Set n) where
+  inductiveAnnotation (Ann _ e) = Set.union
+                                  (syntacticVariables e)
+                                  (foldMap
+                                   (\(bound, Ann (_, subs) _) -> subs `Set.difference` bound)
+                                   (snd (syntacticBinders e))
+                                  )
