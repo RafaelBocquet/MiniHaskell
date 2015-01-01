@@ -1,13 +1,20 @@
 {
+{-# LANGUAGE ViewPatterns, GeneralizedNewtypeDeriving #-}
+
 module Parsing.Lexer where
 
 import Parsing.Token
 import Parsing.Layout
-import Syntax.Location
+
+import Parsing.Location
 
 import Control.Applicative
+import Data.Bifunctor
 
 import Data.Char (isAlpha)
+
+import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
+import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
 
 }
 
@@ -102,8 +109,8 @@ $char = [\ -\~] # [\\\"]
 @moduleName @symId { alexToken (\(splitModuleName -> s) -> TkIdentifier (init s) (last s)) }
 
 @integer    { alexToken (TkInteger . read) }
-\'@char\'   { alexSimpleToken (TkChar . read) }
-\"@string\" { alexSimpleToken (TkString . read) }
+\'@char\'   { alexToken (TkChar . read) }
+\"@string\" { alexToken (TkString . read) }
 
 {
 
@@ -117,7 +124,7 @@ alexInitUserState = AlexUserState
 
 alexEOF = do
   (AlexPn a r c, _, _, _) <- alexGetInput
-  return (Token TkEOF (Location (Position a r c) 0) c)
+  return (Token TkEOF (SourceLocation (Position a r c) 0) c)
 
 splitModuleName :: String -> [String]
 splitModuleName = uncurry (:) . splitModuleName'
@@ -130,7 +137,7 @@ splitModuleName = uncurry (:) . splitModuleName'
 
 alexToken :: (String -> Token') -> AlexAction Token
 alexToken t (AlexPn a r c, _, _, s) l  = do
-  return (Token (t $ take l s) (Location (Position a r c) l) c)
+  return (Token (t $ take l s) (SourceLocation (Position a r c) l) c)
 
 alexSimpleToken :: Token' -> AlexAction Token
 alexSimpleToken = alexToken . const
@@ -145,7 +152,13 @@ alexScanTokens = do
      tks <- alexScanTokens
      return (tk : tks)
 
-tokenise :: String -> Either String [Token]
-tokenise s = makeLayout `fmap` runAlex s alexScanTokens
+newtype LexingError = LexingError String
+                      deriving (Eq, Ord, Show)
+
+instance Pretty LexingError where
+  pPrint (LexingError a) = text a
+
+tokenise :: String -> Either LexingError [Token]
+tokenise s = bimap LexingError makeLayout $ runAlex s alexScanTokens
 
 }

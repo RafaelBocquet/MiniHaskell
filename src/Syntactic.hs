@@ -23,13 +23,19 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 class Syntactic e where
-  syntacticVariables :: Ord n => e n a -> Set n
-  syntacticBinders   :: Ord n => e n a -> (Set n, e n (Set n, a))
+  syntacticVariables :: Eq n => e n a -> [n]
+  syntacticBinders   :: Eq n => e n a -> ([n], e n ([n], a))
 
 instance (Syntactic e, Functor (e n), Foldable (e n), Ord n) => InductiveAnnotation (e n) a (Set n) where
   inductiveAnnotation (Ann _ e) = Set.union
-                                  (syntacticVariables e)
+                                  (Set.fromList $ syntacticVariables e)
                                   (foldMap
-                                   (\(bound, Ann (_, subs) _) -> subs `Set.difference` bound)
+                                   (\(bound, Ann (_, subs) _) -> subs Set.\\ Set.fromList bound)
                                    (snd (syntacticBinders e))
                                   )
+
+syntacticFreeVariables :: (Syntactic e, Foldable (e n), Eq n) => Ann (e n) a -> [n]
+syntacticFreeVariables (Ann _ e) = syntacticVariables e
+                                   ++ foldMap
+                                   (\(bound, f) -> syntacticFreeVariables f \\ bound)
+                                   (snd (syntacticBinders e))

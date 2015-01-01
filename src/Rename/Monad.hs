@@ -20,8 +20,11 @@ import qualified Data.Map as Map
 
 data RenameError = RenameError
 
-newtype Rename a = Rename { runRename :: StateT Int (Reader (Map Name UniqueName)) a }
+newtype Rename a = Rename { unRename :: StateT Int (Reader (Map Name UniqueName)) a }
                  deriving (MonadState Int, MonadReader (Map Name UniqueName), Monad, Applicative, Functor)
+
+runRename :: Rename a -> a
+runRename = (runReader ?? Map.empty) . (evalStateT ?? 0) . unRename
 
 fresh :: Name -> Rename UniqueName
 fresh n = do

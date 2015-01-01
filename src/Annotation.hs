@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections #-}
-{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, StandaloneDeriving, UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Annotation where
 
@@ -16,10 +17,23 @@ import Control.Monad.Trans
 import Control.Monad.Morph
 
 data Ann' e a a' = Ann
-                   { annotation :: a
-                   , unAnnotate :: e (Ann e a')
+                   { _annotation :: a
+                   , _unAnnotate :: e (Ann e a')
                    }
 type Ann e a = Ann' e a a
+
+deriving instance (Show a, Show a', Show (e (Ann e a'))) => Show (Ann' e a a')
+
+makeLenses ''Ann'
+
+fixMap :: Bifunctor e => (a -> b) -> Ann (e a) c -> Ann (e b) c
+fixMap f (Ann a e) = Ann a (bimap f (fixMap f) e)
+
+fixFoldMap :: (Bifoldable e, Monoid m) => (a -> m) -> Ann (e a) c -> m
+fixFoldMap f (Ann a e) = bifoldMap f (fixFoldMap f) e
+
+fixTraverse :: (Bitraversable e, Applicative f) => (a -> f b) -> Ann (e a) c -> f (Ann (e b) c)
+fixTraverse f (Ann a e) = Ann a <$> bitraverse f (fixTraverse f) e
 
 -- Inductive annotations
 

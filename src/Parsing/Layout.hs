@@ -1,7 +1,9 @@
+{-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections #-}
+
 module Parsing.Layout where
 
 import Parsing.Token
-import Syntax.Location
+import Parsing.Location
 
 data LToken = LToken Token
             | LOpen Int Int
@@ -29,20 +31,20 @@ ltokenise' []        = []
 --    ltokenise'' (t : ts@(t' : _)) | &
 ltokenise'' []  = []
 ltokenise'' [t] = [LToken t]
-ltokenise'' (t@(tokenLocation -> Location (Position a r c) l) : ts@((tokenLocation -> Location (Position a' r' c') l') : _))
+ltokenise'' (t@(tokenLocation -> SourceLocation (Position a r c) l) : ts@((tokenLocation -> SourceLocation (Position a' r' c') l') : _))
   | r < r' = LToken t : LWhite c' c' : ltokenise' ts 
   | otherwise           = LToken t : ltokenise' ts
 
 isOpeningToken (Token t _ _) = t `elem` [TkLet, TkOf, TkWhere, TkDo, TkOf]
 
 layout :: [LToken] -> [Int] -> [Token]
-layout (LWhite p n : ts)                   (m : ms)  | n == m = Token TkSemiColon noLocation 0 : layout ts                (m : ms)
-                                                     | n < m = Token TkRBrace    noLocation 0 : layout (LWhite p n : ts) ms
-layout (LOpen p n : ts)                    (m : ms)  | n > m = Token TkLBrace    noLocation 0 : layout ts                (n : m : ms)
-layout (LOpen p n : ts)                    []        | n > 0 = Token TkLBrace    noLocation 0 : layout ts                (n : [])
+layout (LWhite p n : ts)                   (m : ms)  | n == m = Token TkSemiColon NoLocation 0 : layout ts                (m : ms)
+                                                     | n < m = Token TkRBrace    NoLocation 0 : layout (LWhite p n : ts) ms
+layout (LOpen p n : ts)                    (m : ms)  | n > m = Token TkLBrace    NoLocation 0 : layout ts                (n : m : ms)
+layout (LOpen p n : ts)                    []        | n > 0 = Token TkLBrace    NoLocation 0 : layout ts                (n : [])
 layout (LToken t@(tokenToken -> TkRBrace) : ts) (0 : ms)      = t : layout ts ms
 layout (LToken t@(tokenToken -> TkLBrace) : ts) ms            = t : layout ts (0 : ms)
-layout [LToken t@(tokenToken -> TkEOF)]     ms | all (> 0) ms = fmap (const $ Token TkRBrace noLocation 0) ms ++ [t]
+layout [LToken t@(tokenToken -> TkEOF)]     ms | all (> 0) ms = fmap (const $ Token TkRBrace NoLocation 0) ms ++ [t]
 layout (LToken t : ts)                     ms                = t : layout ts ms
 layout err ms = error (show (err, ms))
 

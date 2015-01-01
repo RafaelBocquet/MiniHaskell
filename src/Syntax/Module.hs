@@ -27,6 +27,13 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
+import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
+
+
+--
+
+
 data ModuleImportSpec n = InpVar n
                         | InpAll n
                         | InpFilter n [n]
@@ -39,6 +46,8 @@ data ModuleImport n = ModuleImport
                       , _importHiding    :: [ModuleImportSpec n]
                       }
 makeLenses ''ModuleImport
+
+--
 
 data ModuleExportSpec n = ExpVar n
                         | ExpAll n
@@ -68,28 +77,13 @@ data Module n = Module
                 , _moduleInstanceDeclarations :: [InstanceDeclaration n]
                 }
 makeLenses ''Module
-  
-data ModuleBody n = ModuleBody 
-                    { _moduleBodyImportList           :: [ModuleImport n]
-                    , _moduleBodyDeclarations         :: DeclarationMap n (Expr n ())
-                    , _moduleBodyTypeDeclarations     :: TypeDeclarationMap n
-                    , _moduleBodyClassDeclarations    :: ClassDeclarationMap n
-                    , _moduleBodyInstanceDeclarations :: [InstanceDeclaration n]
-                    }
-makeLenses ''ModuleBody
 
-emptyBody :: ModuleBody n
-emptyBody = ModuleBody [] Map.empty Map.empty Map.empty []
-
-appendBody :: Ord n => ModuleBody n -> ModuleBody n -> Maybe (ModuleBody n)
-ModuleBody imps decls tdecls cdecls idecls `appendBody` ModuleBody imps' decls' tdecls' cdecls' idecls'
-  | not (Map.null (Map.intersection decls decls'))   = Nothing
-  | not (Map.null (Map.intersection tdecls tdecls')) = Nothing
-  | not (Map.null (Map.intersection cdecls cdecls')) = Nothing
-  | otherwise = Just $ ModuleBody (imps ++ imps') (Map.union decls decls') (Map.union tdecls tdecls') (Map.union cdecls cdecls') (idecls ++ idecls')
-
-concatBody :: Ord n => [ModuleBody n] -> Maybe (ModuleBody n)
-concatBody = foldr ((=<<) . appendBody) (Just emptyBody)
-
-moduleBodyTypeDeclaration :: n -> TypeDeclaration n -> ModuleBody n
-moduleBodyTypeDeclaration a b = ModuleBody [] Map.empty (Map.singleton a b) Map.empty []
+instance (Pretty n, Show n) => Pretty (Module n) where
+  pPrint (Module mn exps inps decls tdecls cdecls idecls) =
+    vcat
+    [ text "module" <+> pPrint mn <+> text "where"
+    , nest 1 $
+      vcat (Map.toList decls
+            <&> \(n, e) -> pPrint n <+> text "=" <+> pPrint e
+           )
+    ]

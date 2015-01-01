@@ -27,6 +27,7 @@ newtype ModuleName = ModuleName { unModuleName :: [String] }
                    deriving (Ord, Eq, Monoid)
 
 instance Show ModuleName where
+  show (ModuleName []) = ""
   show (ModuleName ns) = foldr1 (\a b -> a ++ '.' : b) ns
 
 instance Pretty ModuleName where
@@ -42,22 +43,30 @@ data Namespace = NsVar
                | NsType
                | NsTyCon
                | NsTyCls
-               deriving (Eq, Ord)
+               deriving (Eq, Ord, Show)
 
 data Name = Name
             { _namespace  :: Namespace
             , _nameModule :: ModuleName
             , _name       :: String
             }
---            | GName 
-            deriving (Eq, Ord)
+          | GName
+            { _namespace :: Namespace
+            , _nameModule :: ModuleName
+            , _gname :: Int
+            }
+            deriving (Eq, Ord, Show)
 makeLenses ''Name
+
+localVar :: String -> Name
+localVar = Name NsVar localName
 
 unnamedType :: Name
 unnamedType = Name NsType localName ""
 
 instance Pretty Name where
-  pPrint (Name _ md mn) = pPrint md <> char '.' <> text mn
+  pPrint (Name _ (ModuleName []) mn) = text mn
+  pPrint (Name _ md mn)              = pPrint md <> char '.' <> text mn
 
 -- unique names
 
@@ -65,6 +74,7 @@ data UniqueName = UniqueName
                   { _uniqueId   :: Int
                   , _uniqueName :: Name
                   }
+                  deriving (Show)
 makeLenses ''UniqueName
 
 instance Eq UniqueName where

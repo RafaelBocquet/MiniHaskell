@@ -38,7 +38,7 @@ data Type' n e = TyVar' n
                | TyApp' e e
                | TyCon' n
                | TyForall' n e
-               deriving (Functor, Foldable, Traversable)
+               deriving (Functor, Foldable, Traversable, Show)
 type Type n a = Ann (Type' n) ((), a)
 
 instance Bifunctor Type' where
@@ -61,14 +61,14 @@ instance Bitraversable Type' where
   bitraverse f g (TyForall' x t) = TyForall' <$> f x <*> g t
 
 instance Syntactic Type' where
-  syntacticVariables (TyVar' x) = Set.singleton x
-  syntacticVariables (TyCon' c) = Set.singleton c
-  syntacticVariables _          = Set.empty
+  syntacticVariables (TyVar' x) = [x]
+  syntacticVariables (TyCon' c) = [c]
+  syntacticVariables _          = []
 
-  syntacticBinders (TyForall' x t) = ( Set.singleton x
-                                     , TyForall' x (Set.singleton x, t)
+  syntacticBinders (TyForall' x t) = ( [x]
+                                     , TyForall' x ([x], t)
                                      )
-  syntacticBinders e               = (Set.empty, fmap (Set.empty,) e)
+  syntacticBinders e               = ([], fmap ([],) e)
 
 viewType :: Type n a -> [n]  -> ([n], Type n a, [Type n a])
 viewType (TyForall x a) vs = viewType a (x:vs)
@@ -99,6 +99,15 @@ instance Pretty n => Pretty (Type n a) where
            else pPrint t
     ]
     
+
+tyVar :: InductiveAnnotable (Type' n) a => n -> Type n a
+tyVar x = ann (TyVar' x)
+tyApp :: InductiveAnnotable (Type' n) a => Type n a -> Type n a -> Type n a
+tyApp f t = ann (TyApp' f t)
+tyCon :: InductiveAnnotable (Type' n) a => n -> Type n a
+tyCon c = ann (TyCon' c)
+tyForall :: InductiveAnnotable (Type' n) a => n -> Type n a -> Type n a
+tyForall x a = ann (TyForall' x a)
 
 pattern TyVar x      <- Ann _ (TyVar' x)
 pattern TyApp f t    <- Ann _ (TyApp' f t)
