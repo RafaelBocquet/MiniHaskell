@@ -60,10 +60,10 @@ runDriver = runExcept . unDriverMonad
 
 doCompile :: String -> IO ()
 doCompile fn = do
-  src <- readFile fn
+--  src <- readFile fn
   let a = runDriver $ do
-        toks <- liftDriver $ tokenise src
-        mod  <- liftDriver $ runParseMonad $ parseModule toks
+--        toks <- liftDriver $ tokenise src
+--        mod  <- liftDriver $ runParseMonad $ parseModule toks
         let rmod = runRename $ renameModule primitiveModule
         return rmod
   putStrLn.show.pPrint $ a

@@ -22,6 +22,9 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+class SimpleSyntactic e n where
+  syntacticBound :: e -> [n]
+
 class Syntactic e where
   syntacticVariables :: Eq n => e n a -> [n]
   syntacticBinders   :: Eq n => e n a -> ([n], e n ([n], a))

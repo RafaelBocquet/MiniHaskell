@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections, OverloadedStrings #-}
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Syntax.Module where
@@ -21,6 +21,8 @@ import Control.Applicative
 import Control.Monad
 
 import Control.Lens
+
+import GHC.Generics
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -53,9 +55,23 @@ data DataConstructor n    = DataConstructor
                             { _dataConstructorName  :: n
                             , _dataConstructorTypes :: [Type n ()]
                             }
-data TypeDeclaration n    = DataDeclaration [n] [DataConstructor n]
-                          | TypeDeclaration [n] (Type n ())
+                          deriving (Generic)
+
+
+makeLenses ''DataConstructor
+
+data TypeDeclaration n    = DataDeclaration
+                            { _typeDeclarationVariables :: [n]
+                            , _dataDeclarationConstructors :: [DataConstructor n]
+                            }
+                          | TypeDeclaration
+                            { _typeDeclarationVariables :: [n]
+                            , _typeDeclarationAlias :: Type n ()
+                            }
+                          deriving (Generic)
 type TypeDeclarationMap n = Map n (TypeDeclaration n)
+
+makeLenses ''TypeDeclaration
 
 data ClassDeclaration n    = ClassDeclaration
 type ClassDeclarationMap n = Map n (ClassDeclaration n)

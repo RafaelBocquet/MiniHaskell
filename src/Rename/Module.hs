@@ -10,7 +10,8 @@ import Syntax.Name
 import Syntax.Type
 
 import Rename.Monad
-import Rename.Declaration
+import Rename.Expression
+import Rename.TypeDeclaration
 
 import Data.Maybe
 
@@ -33,16 +34,17 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-  -- _moduleName                 :: ModuleName
-  -- _moduleImportList           :: [ModuleImport n]
-  -- _moduleDeclarations         :: DeclarationMap n
-  -- _moduleTypeDeclarations     :: TypeDeclarationMap n
-  -- _moduleClassDeclarations    :: ClassDeclarationMap n
-  -- _moduleInstanceDeclarations :: [InstanceDeclaration n]
+-- _moduleName                 :: ModuleName
+-- _moduleImportList           :: [ModuleImport n]
+-- _moduleDeclarations         :: DeclarationMap n
+-- _moduleTypeDeclarations     :: TypeDeclarationMap n
+-- _moduleClassDeclarations    :: ClassDeclarationMap n
+-- _moduleInstanceDeclarations :: [InstanceDeclaration n]
 
 
 renameModule :: Module Name -> Rename (Module UniqueName)
 renameModule (Module mn exps imps decls tdecls cdecls idecls) = do
-  decls' <- renameDeclarationMap decls
-  return $ Module mn undefined undefined decls' undefined undefined undefined
+  tdecls' <- renameMap rename tdecls
+  decls' <- renameMap renameExpression decls
+  return $ Module mn undefined undefined decls' tdecls' undefined undefined
 

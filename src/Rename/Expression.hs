@@ -35,4 +35,4 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 renameExpression :: Expr Name a -> Rename (Expr UniqueName a)
-renameExpression = renameSyntactic (tritraverse renameType)
+renameExpression = renameSyntactic (tritraverse rename)

@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, TypeSynonymInstances, FlexibleInstances, TypeFamilies #-}
 
 module Rename.Syntactic where
 
@@ -53,3 +53,7 @@ renameSyntactic bt (Ann a e) = do
              localBind bs' $ renameSyntactic bt u
          )
   return $ Ann a e''
+
+instance (Syntactic e, Bitraversable e, RenameTo (Ann (e Name) a) ~ Ann (e UniqueName) a) => Renamable (Ann (e Name) a) where
+  rename = renameSyntactic bitraverse
+
