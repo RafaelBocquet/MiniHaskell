@@ -38,10 +38,11 @@ freshMany ns = fmap Map.fromList
 
 renameLookup :: Name -> Rename UniqueName
 renameLookup n = do
+  env <- view id
   n' <- Map.lookup n <$> view id
   case n' of
    Just n' -> return n'
-   Nothing -> error "pouet"
+   Nothing -> error $ "unknown name " ++ show n ++ " in env \n" ++ show env
 
 localBind :: Map Name UniqueName -> Rename a -> Rename a
 localBind bs = local (Map.union bs)

@@ -18,9 +18,6 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
-import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
-
 -- module names
 
 newtype ModuleName = ModuleName { unModuleName :: [String] }
@@ -30,9 +27,6 @@ instance Show ModuleName where
   show (ModuleName []) = ""
   show (ModuleName ns) = foldr1 (\a b -> a ++ '.' : b) ns
 
-instance Pretty ModuleName where
-  pPrint mn = text (show mn)
-
 localName :: ModuleName
 localName = ModuleName []
 
@@ -40,9 +34,8 @@ localName = ModuleName []
 
 data Namespace = NsVar
                | NsCon
-               | NsType
+               | NsTyVar
                | NsTyCon
-               | NsTyCls
                deriving (Eq, Ord, Show)
 
 data Name = Name
@@ -58,15 +51,21 @@ data Name = Name
             deriving (Eq, Ord, Show)
 makeLenses ''Name
 
-localVar :: String -> Name
+moduleVar, moduleCon, moduleTyVar, moduleTyCon :: ModuleName -> String -> Name
+moduleVar = Name NsVar
+moduleCon = Name NsCon
+moduleTyVar = Name NsVar
+moduleTyCon = Name NsCon
+
+localVar, localCon, localTyVar, localTyCon :: String -> Name
 localVar = Name NsVar localName
+localCon = Name NsCon localName
+localTyVar = Name NsVar localName
+localTyCon = Name NsCon localName
 
-unnamedType :: Name
-unnamedType = Name NsType localName ""
+-- unnamedType :: Name
+-- unnamedType = Name NsTyVar localName ""
 
-instance Pretty Name where
-  pPrint (Name _ (ModuleName []) mn) = text mn
-  pPrint (Name _ md mn)              = pPrint md <> char '.' <> text mn
 
 -- unique names
 
@@ -85,5 +84,3 @@ instance Ord UniqueName where
   UniqueName a _ <= UniqueName b _ = a <= b
   UniqueName a _ >  UniqueName b _ = a >  b
   UniqueName a _ >= UniqueName b _ = a >= b
-instance Pretty UniqueName where
-  pPrint (UniqueName id n) = pPrint n

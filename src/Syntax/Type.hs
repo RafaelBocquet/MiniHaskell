@@ -29,9 +29,6 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
-import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
-
 -- Type
 
 data Type' n e = TyVar' n
@@ -72,33 +69,7 @@ instance Syntactic Type' where
 
 viewType :: Type n a -> [n]  -> ([n], Type n a, [Type n a])
 viewType (TyForall x a) vs = viewType a (x:vs)
-viewType (a :$ acc) vs     = (vs, a, acc)
-
-largeType :: Type n a -> Bool
-largeType (TyVar _)       = False
-largeType (TyApp _ _)     = True
-largeType (TyCon _)       = False
-largeType (TyForall _ a)  = largeType a
-
-instance Pretty n => Pretty (Type n a) where
-  pPrint (viewType ?? [] -> (vs, tcon, tas))               =
-    hsep
-    [ if null vs
-      then mempty
-      else hsep
-           [ text "∀"
-           , hsep $ fmap pPrint vs
-           , text "."
-           ]
-    , pPrint tcon
-    , hsep
-      $ tas
-      <&> \t ->
-           if largeType t
-           then parens $ pPrint t
-           else pPrint t
-    ]
-    
+viewType (a :$ acc) vs     = (vs, a, acc)   
 
 tyVar :: InductiveAnnotable (Type' n) a => n -> Type n a
 tyVar x = ann (TyVar' x)
@@ -143,17 +114,3 @@ type Kind    = Ann Kind' ()
 
 pattern KStar       = Ann () KStar'
 pattern KArrow k k' = Ann () (KArrow' k k')
-
-largeKind :: Kind -> Bool
-largeKind KStar        = False
-largeKind (KArrow _ _) = True
-
-instance Pretty Kind where
-  pPrint KStar         = text "★"
-  pPrint (KArrow k k') = hsep
-                         [ if largeKind k
-                           then parens $ pPrint k
-                           else pPrint k
-                         , text "->"
-                         , pPrint k'
-                         ]

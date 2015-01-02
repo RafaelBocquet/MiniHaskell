@@ -28,17 +28,6 @@ instance Monoid (Constraint n a) where
   mappend a b = CsAnd [a, b]
   mconcat     = CsAnd
 
-instance Pretty n => Pretty (Constraint n a) where
-  -- pPrint (CsUnify a b)    = hsep
-  --                           [ pPrint a
-  --                           , text "≡"
-  --                           , pPrint b
-  --                           ]
-  pPrint (CsInstance a b) = hsep
-                            [ pPrint a
-                            , text "≤"
-                            , pPrint b
-                            ]
 csExists :: (n -> Constraint n a) -> Constraint n a
 csExists = undefined
 

@@ -33,9 +33,6 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
-import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
-
 
 data Expr' ty n e = EVar' n
                   | EApp' e e
@@ -125,31 +122,6 @@ instance Syntactic (Expr' ty) where
                                       )
   syntacticBinders e                = ([], fmap ([],) e)
 
-largeExpr :: Ann' (Expr' ty n) a b -> Bool
-largeExpr (EVar _)  = False
-largeExpr (EInt _)  = False
-largeExpr (EChar _) = False
-largeExpr _         = True
-
-largePrintExpr :: (Pretty ty, Pretty n, Show ty, Show n, Show a, Show b) => Ann' (Expr' ty n) a b -> Doc
-largePrintExpr e
-  | largeExpr e = parens (pPrint e)
-  | otherwise   = pPrint e
-
-instance (Pretty ty, Pretty n, Show ty, Show n, Show a, Show b) => Pretty (Ann' (Expr' ty n) a b) where
-  pPrint (EVar x)          = pPrint x
-  pPrint (EApp f t)        = pPrint f <+> largePrintExpr t
-  pPrint (EAbs x e)        = ("λ" <> pPrint x) <+> "->" <+> pPrint e
-  pPrint (ELet [(n, t)] e) = "let" <+> pPrint n <+> "=" <+> pPrint t <+> "in" <+> pPrint e
-  pPrint (ELet bs e)       = "let"
-                             <+> (nest 1 . vcat) (fmap (\(n, t) -> pPrint n <+> "=" <+> pPrint t) bs)
-                             $+$ "in" <+> pPrint e
-  pPrint (ECase e cs)      = ("case" <+> pPrint e <+> "of")
-                         $$ nest 1 (vcat (fmap (\(pat, e) -> pPrint pat <+> "->" <+> pPrint e) cs))
-  pPrint (EAnnot ty e)     = pPrint ty <+> "::" <+> pPrint e
-  pPrint (EInt x)          = text (show x)
-  pPrint (EChar c)         = text (show c)
-
 data Pat' n e = PAny'
                 { _patternVariables :: [n]
                 }
@@ -179,22 +151,6 @@ instance Bitraversable Pat' where
 instance Syntactic Pat' where
   syntacticVariables = view patternVariables
   syntacticBinders e = ([], fmap ([],) e)
-
-largePat :: Ann (Pat' n) () -> Bool
-largePat (PAny _)      = False
-largePat (PCon _ [] _) = False
-largePat (PCon _ _ _)  = True
-
-largePrintPat :: Pretty n => Ann (Pat' n) () -> Doc
-largePrintPat e
-  | largePat e = parens (pPrint e)
-  | otherwise  = pPrint e
-
-instance Pretty n => Pretty (Ann' (Pat' n) () ()) where
-  pPrint (PAny [])              = "_"
-  pPrint (PAny as)              = foldr1 (\a b -> a <+> "@" <+> b) (pPrint <$> as)
-  pPrint (PCon con args [])     = hsep (pPrint con : fmap largePrintPat args)
-  pPrint (PCon con args (a:as)) = pPrint a <> "@" <> parens (pPrint (PCon con args as))
 
 pattern PAny vs          = Ann () (PAny' vs)
 pattern PCon con args vs = Ann () (PCon' con args vs)

@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections #-}
+{-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections, OverloadedStrings #-}
 {-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -27,12 +27,7 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
-import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
-
-
 --
-
 
 data ModuleImportSpec n = InpVar n
                         | InpAll n
@@ -78,12 +73,3 @@ data Module n = Module
                 }
 makeLenses ''Module
 
-instance (Pretty n, Show n) => Pretty (Module n) where
-  pPrint (Module mn exps inps decls tdecls cdecls idecls) =
-    vcat
-    [ text "module" <+> pPrint mn <+> text "where"
-    , nest 1 $
-      vcat (Map.toList decls
-            <&> \(n, e) -> pPrint n <+> text "=" <+> pPrint e
-           )
-    ]

@@ -162,35 +162,53 @@ conId    : tconId      { Name NsCon localName (snd $ identifierName $1) }
 symId    : tsymId      { Name NsVar localName (snd $ identifierName $1) }
 symconId : tsymconId   { Name NsCon localName (snd $ identifierName $1) }
 
-qvarId    : varId      { $1 }
-          | tqvarId    { Name  NsVar   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
-qconId    : conId      { $1 }
-          | tqconId    { Name  NsCon   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
-qsymId    : symId      { $1 }
-          | tqsymId    { Name  NsVar   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
-qsymconId : symconId   { $1 }
-          | tqsymconId { Name  NsCon   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
-qtcId     : conId      { $1 }
-          | tqconId    { Name  NsTyCls (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+tyvarId    : tvarId      { Name NsTyVar localName (snd $ identifierName $1) }
+           | 'qualified' { Name NsTyVar localName "qualified" }
+           | 'as'        { Name NsTyVar localName "as" }
+           | 'hiding'    { Name NsTyVar localName "hiding" }
+tyconId    : tconId      { Name NsTyCon localName (snd $ identifierName $1) }
+tysymId    : tsymId      { Name NsTyVar localName (snd $ identifierName $1) }
+tysymconId : tsymconId   { Name NsTyCon localName (snd $ identifierName $1) }
 
-qtyvarId    : varId      { $1 }
-            | tqvarId    { Name NsVar (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
-qtyconId    : conId      { $1 }
-            | tqconId    { Name NsCon (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
-qtysymId    : symId      { $1 }
-            | tqsymId    { Name NsVar (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
-qtysymconId : symconId   { $1 }
-            | tqsymconId { Name NsCon (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+qvarId    : tvarId     { Name  NsVar   localName                              (snd $ identifierName $1) }
+          | tqvarId    { Name  NsVar   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+qconId    : tconId     { Name  NsCon   localName                              (snd $ identifierName $1) }
+          | tqconId    { Name  NsCon   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+qsymId    : tsymId     { Name  NsVar   localName                              (snd $ identifierName $1) }
+          | tqsymId    { Name  NsVar   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+qsymconId : tsymconId  { Name  NsCon   localName                              (snd $ identifierName $1) }
+          | tqsymconId { Name  NsCon   (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+
+qtyvarId    : tvarId     { Name NsTyVar localName                              (snd $ identifierName $1) }
+            | tqvarId    { Name NsTyVar (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+qtyconId    : tconId     { Name NsTyCon localName                              (snd $ identifierName $1) }
+            | tqconId    { Name NsTyCon (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+qtysymId    : tsymId     { Name NsTyVar localName                              (snd $ identifierName $1) }
+            | tqsymId    { Name NsTyVar (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
+qtysymconId : tsymconId  { Name NsTyCon localName                              (snd $ identifierName $1) }
+            | tqsymconId { Name NsTyCon (ModuleName $ fst $ identifierName $1) (snd $ identifierName $1) }
 
 svarId : varId { $1 }
        | delimited('(', symId, ')') { $1 }
 sconId : conId { $1 }
        | delimited('(', symconId, ')') { $1 }
-
+       | delimited('(', nonempty_list(','), ')') { tupleName (length $1 + 1) }
 qsvarId : qvarId { $1 }
-       | delimited('(', qsymId, ')') { $1 }
+        | delimited('(', qsymId, ')') { $1 }
 qsconId : qconId { $1 }
-       | delimited('(', qsymconId, ')') { $1 }
+        | delimited('(', qsymconId, ')') { $1 }
+--        | delimited('(', nonempty_list(','), ')') { tupleName (length $1 + 1) }
+
+styvarId : tyvarId { $1 }
+         | delimited('(', tysymId, ')') { $1 }
+styconId : tyconId { $1 }
+         | delimited('(', tysymconId, ')') { $1 }
+         | delimited('(', nonempty_list(','), ')') { tupleTypeName (length $1 + 1) }
+qstyvarId : qtyvarId { $1 }
+          | delimited('(', qtysymId, ')') { $1 }
+qstyconId : qtyconId { $1 }
+          | delimited('(', qtysymconId, ')') { $1 }
+--          | delimited('(', nonempty_list(','), ')') { tupleTypeName (length $1 + 1) }
 -- 
 
 module : moduleHeader moduleBody EOF {% do
@@ -219,17 +237,17 @@ importDeclaration :: { ModuleImport Name }
 import :: { ModuleImportSpec Name }
 import : varId
            { InpVar $1 }
-       | conId '(' '..' ')'
+       | tyconId '(' '..' ')'
            { InpAll $1 }
-       | conId '(' separated_list(conId, ',') ')'
+       | tyconId '(' separated_list(conId, ',') ')'
            { InpFilter $1 $3 }
 
 export :: { ModuleExportSpec Name } 
 export : varId
            { ExpVar $1 }
-       | conId '(' '..' ')'
+       | tyconId '(' '..' ')'
            { ExpAll $1 }
-       | conId '(' separated_list(conId, ',') ')'
+       | tyconId '(' separated_list(conId, ',') ')'
            { ExpFilter $1 $3 }
        | 'module' moduleName
            { ExpModule $2 }
@@ -241,7 +259,7 @@ topDeclaration :: { ModuleBody }
                    { moduleBodyTypeDeclaration (fst $2) (DataDeclaration (snd $2) $4) }
 --                -- | 'newtype' context simpletype '=' conId list(atype) { 0 }
 --               | 'class' {- simplecontext -} conId varId option(preceded('where', delimited('{', separated_list(classDeclaration, nonempty_list(';')), '}')))
---                | 'instance' {- simplecontext -} qtcId instance option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}')))
+--                | 'instance' {- simplecontext -} qtyconId instance option(preceded('where', delimited('{', separated_list(instanceDeclaration, nonempty_list(';')), '}')))
 --                     {% do
 --                       decls <- makeDeclarationMap $ maybe Map.empty (foldr addBinding Map.empty) $4
 --                       return [TopInstanceDeclaration $2 (fst $3) (InstanceDeclaration (snd $3) decls)]
@@ -280,7 +298,7 @@ typeSignature : type { $1 }
           --  | context conId list(varId) { 0 }
 
 simpletype :: { (Name, [Name]) }
-           : conId list(varId) { ($1, $2) }
+           : styconId list(tyvarId) { ($1, $2) }
 
 type :: { Type Name () }
      : separated_nonempty_list(btype, '->')
@@ -290,8 +308,8 @@ btype :: { Type Name () }
       : nonempty_list(atype) { makeTypeApplication (head $1) (tail $1) }
 
 atype :: { Type Name () }
-      : gtycon                                                  { $1 }
-      | varId                                                   { tyVar $1 }
+      : gtycon            { $1 }
+      | tyvarId           { tyVar $1 }
       | delimited('(', separated_nonempty_list(type, ','), ')')
           { case length $1 of
              1 -> head $1
@@ -304,10 +322,10 @@ atype :: { Type Name () }
 
 gtycon :: { Type Name () }
        : '(' ')'                    { tyCon (primitiveTyCon "()") }
-       | '(' nonempty_list(',') ')' { tyCon (tupleTypeName (length $2)) }
+--       | '(' nonempty_list(',') ')' { tyCon (tupleTypeName (length $2)) }
        | '[' ']'                    { tyCon (primitiveTyCon "[]") }
-       | '(' '->' ')'               { tyCon (primitiveTyCon "->") }
-       | qtyconId                   { tyCon $1 }
+--     | '(' '->' ')'               { tyCon (primitiveTyCon "->") }
+       | qstyconId                   { tyCon $1 }
 
 ---- Classes, context
 

@@ -86,9 +86,17 @@ makeDeclaration cs = do
   let arity = length . fst . head $ cs
   when (not . all ((==) arity) . fmap (length . fst) $ cs)
     $ throwError ParseError
-  let vs    = localVar . ('_':) . show <$> [1..arity]
-      tuple = foldl eApp (eVar (tupleName arity)) (eVar <$> vs)
-  return
-    $ foldl (flip eAbs)
-    ?? vs
-    $ eCase tuple (fmap (first (PCon (tupleName arity) ?? [])) cs)
+  when (arity == 0)
+    $ error "ICE"
+  case arity of
+   0 -> error "ICE"
+   1 -> do
+     return
+       $ eAbs (localVar "_")
+       $ eCase (eVar (localVar "_")) (fmap (first head) cs)
+   _ -> do
+     let vs    = localVar . ('_':) . show <$> [1..arity]
+         tuple = foldl eApp (eVar (tupleName arity)) (eVar <$> vs)
+     return
+       $ foldl (flip eAbs) ?? vs
+       $ eCase tuple (fmap (first (PCon (tupleName arity) ?? [])) cs)

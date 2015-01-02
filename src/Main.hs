@@ -2,9 +2,12 @@
 
 module Main where
 
+import Primitive
+
 import Syntax.Expression
 import Syntax.Type
 import Syntax.Module
+import Syntax.PrettyPrint
 
 import Rename.Monad
 import Rename.Expression
@@ -61,8 +64,8 @@ doCompile fn = do
   let a = runDriver $ do
         toks <- liftDriver $ tokenise src
         mod  <- liftDriver $ runParseMonad $ parseModule toks
-        let rmod = runRename $ renameModule mod
-        return (mod)
+        let rmod = runRename $ renameModule primitiveModule
+        return rmod
   putStrLn.show.pPrint $ a
 
 isFlag :: String -> Bool
