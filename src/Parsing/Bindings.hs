@@ -76,7 +76,7 @@ makeDeclarationMap (Bindings ty vs _ _)
         & mapM makeDeclaration
         <&> Map.mapWithKey (\n -> case Map.lookup n ty of
                                    Nothing -> id
-                                   Just ty -> eAnnot ty
+                                   Just ty -> eAnnot (closeType ty)
                            )
                                                             
 

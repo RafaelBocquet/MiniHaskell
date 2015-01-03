@@ -29,6 +29,8 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import Debug.Trace
+
 --
 
 data ModuleImportSpec n = InpVar n
@@ -56,8 +58,6 @@ data DataConstructor n    = DataConstructor
                             , _dataConstructorTypes :: [Type n ()]
                             }
                           deriving (Generic)
-
-
 makeLenses ''DataConstructor
 
 data TypeDeclaration n    = DataDeclaration
@@ -67,6 +67,10 @@ data TypeDeclaration n    = DataDeclaration
                           | TypeDeclaration
                             { _typeDeclarationVariables :: [n]
                             , _typeDeclarationAlias :: Type n ()
+                            }
+                          | PrimitiveTypeDeclaration
+                            { _typeDeclarationVariables :: [n]
+                            -- , __primitiveTypeKind :: Kind
                             }
                           deriving (Generic)
 type TypeDeclarationMap n = Map n (TypeDeclaration n)
@@ -89,3 +93,21 @@ data Module n = Module
                 }
 makeLenses ''Module
 
+moduleExportedNames :: Show n => Module n -> [n]
+moduleExportedNames md = case md ^. moduleExport of
+  _ -> concat
+             [ md ^. moduleDeclarations
+               & Map.keys
+             , md ^. moduleTypeDeclarations
+               & Map.toList
+               <&> (\case
+                       (n, TypeDeclaration _ _)      ->
+                         [n]
+                       (n, DataDeclaration _ cons) ->
+                         [n] ++ fmap (view dataConstructorName) cons
+                       (n, PrimitiveTypeDeclaration _) ->
+                         [n]
+                   )
+               & concat
+             ]
+  _ -> error "ICE : module export lists unimplemented"

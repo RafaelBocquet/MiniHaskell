@@ -91,11 +91,17 @@ viewTypeApplication a           acc = (a, acc)
 
 pattern t :$ ts <- (flip viewTypeApplication [] -> (t, ts))
 
+makeTypeForall :: InductiveAnnotable (Type' n) a => [n] -> Type n a -> Type n a
+makeTypeForall = flip (foldr tyForall)
+
 makeTypeApplication :: InductiveAnnotable (Type' n) a => Type n a -> [Type n a] -> Type n a
-makeTypeApplication = foldl ((fmap.fmap) ann TyApp')
+makeTypeApplication = foldl tyApp
 
 arrowType :: InductiveAnnotable (Type' Name) a => Type Name a -> Type Name a -> Type Name a
 arrowType a b = makeTypeApplication (ann $ TyCon' $ Name NsTyCon (ModuleName ["Primitive"]) "->") [a, b]
+
+closeType :: (InductiveAnnotable (Type' Name) a, Ord Name) => Type Name a -> Type Name a
+closeType ty = makeTypeForall (Set.toList $ Set.filter isTyVar $ Set.fromList $ syntacticFreeVariables ty) ty
 
 -- Variance
 

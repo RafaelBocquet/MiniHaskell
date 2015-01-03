@@ -26,7 +26,10 @@ primitiveModule = Module
                   []
                   (Map.fromList [])
                   (Map.fromList $
-                   [ ( localTyCon "()"
+                   [ ( localTyCon "->"
+                     , PrimitiveTypeDeclaration [localTyVar "a", localTyVar "b"]
+                     )
+                   , ( localTyCon "()"
                      , DataDeclaration []
                          [ DataConstructor (localCon "()") []]
                      )

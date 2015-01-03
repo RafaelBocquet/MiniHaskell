@@ -44,24 +44,30 @@ data Name = Name
             , _name       :: String
             }
           | GName
-            { _namespace :: Namespace
+            { _namespace  :: Namespace
             , _nameModule :: ModuleName
-            , _gname :: Int
+            , _gname      :: Int
             }
             deriving (Eq, Ord, Show)
 makeLenses ''Name
 
+isVar, isCon, isTyVar, isTyCon :: Name -> Bool
+isVar n = n ^. namespace == NsVar
+isCon n = n ^. namespace == NsCon
+isTyVar n = n ^. namespace == NsTyVar
+isTyCon n = n ^. namespace == NsTyCon
+
 moduleVar, moduleCon, moduleTyVar, moduleTyCon :: ModuleName -> String -> Name
 moduleVar = Name NsVar
 moduleCon = Name NsCon
-moduleTyVar = Name NsVar
-moduleTyCon = Name NsCon
+moduleTyVar = Name NsTyVar
+moduleTyCon = Name NsTyCon
 
 localVar, localCon, localTyVar, localTyCon :: String -> Name
 localVar = Name NsVar localName
 localCon = Name NsCon localName
-localTyVar = Name NsVar localName
-localTyCon = Name NsCon localName
+localTyVar = Name NsTyVar localName
+localTyCon = Name NsTyCon localName
 
 -- unnamedType :: Name
 -- unnamedType = Name NsTyVar localName ""

@@ -47,7 +47,7 @@ renameSyntactic bt (Ann a e) = do
                           & fmap (v,)
   e'' <- e'
          & bt
-         (localBind bs . renameLookup)
+         (localBind bs . rename)
          (\(Set.fromList -> ws, u) -> do
              let bs' = Map.filterWithKey (\k _ -> k `Set.member` ws) bs
              localBind bs' $ renameSyntactic bt u

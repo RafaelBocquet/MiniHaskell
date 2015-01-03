@@ -28,6 +28,7 @@ import Control.Monad.State hiding (forM)
 import Control.Monad.Reader hiding (forM)
 
 import Control.Lens
+import Control.Arrow ((&&&))
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -44,7 +45,31 @@ import qualified Data.Map as Map
 
 renameModule :: Module Name -> Rename (Module UniqueName)
 renameModule (Module mn exps imps decls tdecls cdecls idecls) = do
-  tdecls' <- renameMap rename tdecls
-  decls' <- renameMap renameExpression decls
-  return $ Module mn undefined undefined decls' tdecls' undefined undefined
+  let setModule = uniqueName.nameModule .~ mn
+  tdecls' <- rename tdecls
+             <&> Map.mapKeys setModule
+             <&> fmap (dataDeclarationConstructors.traverse.dataConstructorName %~ setModule)
+  decls'  <- rename decls
+             <&> Map.mapKeys setModule
+  return $ Module mn (error "1") (error "2") decls' tdecls' (error "3") (error "4")
 
+runRenameModule :: Map ModuleName (Module UniqueName) -> Module Name -> Either RenameError (Module UniqueName)
+runRenameModule mp md = runRename $ do
+  imps' <- forM (md ^. moduleImportList) $ \imp -> do
+    imd <- Map.lookup (imp ^. importName) mp
+           & maybe (error "unknown module") return
+    exp <- moduleExportedNames imd
+           & return
+           -- & maybe return _ (imp ^. importList)
+           <&> fmap (view uniqueName &&& RGlobal . (: []))
+           <&> Map.fromList
+    return $ Map.union
+      (if imp ^. importQualified
+       then Map.empty
+       else exp
+            & Map.mapKeys (nameModule .~ localName)
+      )
+      exp 
+  let vars = foldr (Map.unionWith mappend) Map.empty imps'
+  bindVariables vars (renameModule md)
+  

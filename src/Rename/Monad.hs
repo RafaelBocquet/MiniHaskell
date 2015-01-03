@@ -1,7 +1,8 @@
 {-# LANGUAGE LambdaCase, ViewPatterns, PatternSynonyms, TupleSections, TypeOperators #-}
 {-# LANGUAGE MultiParamTypeClasses, TypeFamilies, FlexibleInstances, FlexibleContexts, UndecidableInstances #-}
 {-# LANGUAGE DeriveGeneric, GeneralizedNewtypeDeriving #-}
-
+{-# LANGUAGE TemplateHaskell #-}
+  
 module Rename.Monad where
 
 import Control.Lens
@@ -15,6 +16,7 @@ import Control.Monad.Except
 import Syntactic
 
 import Syntax.Name
+import Syntax.Type
 
 import Data.Maybe
 
@@ -25,13 +27,41 @@ import qualified Data.Map as Map
 
 import GHC.Generics
 
+import Text.PrettyPrint.HughesPJ hiding ((<>), empty)
+import Text.PrettyPrint.HughesPJClass hiding ((<>), empty)
+
 data RenameError = RenameError
+                 deriving (Show)
 
-newtype Rename a = Rename { unRename :: StateT Int (Reader (Map Name UniqueName)) a }
-                 deriving (MonadState Int, MonadReader (Map Name UniqueName), Monad, Applicative, Functor)
+instance Pretty RenameError where
+  pPrint = text . show
 
-runRename :: Rename a -> a
-runRename = (runReader ?? Map.empty) . (evalStateT ?? 0) . unRename
+data RenameVariable = RNone
+                    | RGlobal [UniqueName]
+                    | RLocal UniqueName
+                    deriving (Show)
+
+instance Monoid RenameVariable where
+  mempty = RNone
+  RNone `mappend` a               = a
+  a `mappend` RNone               = a
+  RGlobal xs `mappend` RGlobal ys = RGlobal (xs ++ ys)
+  RLocal a `mappend` _            = RLocal a
+  _ `mappend` RLocal a            = error "ICE"
+  
+data RenameEnv = RenameEnv
+                 { _renameVariables :: Map Name RenameVariable
+                 , _renameTypeAlias :: Map UniqueName (Type UniqueName ())
+                 }
+                 deriving (Show)
+
+makeLenses ''RenameEnv
+
+newtype Rename a = Rename { unRename :: StateT Int (ReaderT RenameEnv (Except RenameError)) a }
+                 deriving (MonadState Int, MonadReader RenameEnv, MonadError RenameError, Monad, Applicative, Functor)
+
+runRename :: Rename a -> Either RenameError a
+runRename = runExcept . (runReaderT ?? RenameEnv Map.empty Map.empty) . (evalStateT ?? 0) . unRename
 
 -- Renamable class
 
@@ -40,7 +70,7 @@ type family RenameTo a
 class Renamable a where
   rename :: a -> Rename (RenameTo a)
 
--- generic instances
+-- Generic instances
 
 class GRenamable a where
   type GRenameTo a :: * -> *
@@ -67,10 +97,14 @@ instance GRenamable a => GRenamable (M1 i c a) where
   type GRenameTo (M1 i c a) = M1 i c (GRenameTo a)
   grename (M1 a) = M1 <$> grename a
 
+-- This case is overlappable so as not to be a possible match in all cases
+
 instance {-# OVERLAPPABLE #-} (Generic a, GRenamable (Rep a), Generic (RenameTo a), Rep (RenameTo a) ~ GRenameTo (Rep a), SimpleSyntactic a Name) => Renamable a where
   rename x = do
     bs <- freshMany (syntacticBound x)
     localBind (Map.fromList bs) $ GHC.Generics.to <$> grename (GHC.Generics.from x)
+
+-- Common instances
 
 type instance RenameTo [a]  = [RenameTo a]
 instance Renamable a => Renamable [a] where
@@ -78,7 +112,22 @@ instance Renamable a => Renamable [a] where
 
 type instance RenameTo Name = UniqueName
 instance Renamable Name where
-  rename = renameLookup
+  rename n = do
+    n' <- Map.lookup n <$> view renameVariables
+    case n' of
+     Just (RGlobal [n'])                -> return n'
+     Just (RLocal n')                   -> return n'
+     Just (RGlobal ns) | length ns >= 2 -> error "e2"
+     _                                  -> error $ "unknown name " ++ show n
+
+-- Consider all the keys as fresh, which are then bound when renaming the elements
+type instance RenameTo (Map Name a) = Map UniqueName (RenameTo a)
+instance Renamable a => Renamable (Map Name a) where
+  rename mp = do 
+    bs <- Map.fromList <$> freshMany (Map.keys mp)
+    localBind bs
+      $ (Map.mapKeys (fromJust . flip Map.lookup bs) mp)
+      & traverse rename
 
 --
 
@@ -91,20 +140,8 @@ freshMany :: [Name] -> Rename [(Name, UniqueName)]
 freshMany ns = forM ns $ \v -> fresh v
                                  & fmap (v,)
 
-renameMap :: (a -> Rename b) -> Map Name a -> Rename (Map UniqueName b)
-renameMap f mp = do 
-  bs <- Map.fromList <$> freshMany (Map.keys mp)
-  localBind bs
-    $ (Map.mapKeys (fromJust . flip Map.lookup bs) mp)
-    & traverse f
-
-renameLookup :: Name -> Rename UniqueName
-renameLookup n = do
-  env <- view id
-  n' <- Map.lookup n <$> view id
-  case n' of
-   Just n' -> return n'
-   Nothing -> error $ "unknown name " ++ show n ++ " in env \n" ++ show env
+bindVariables :: Map Name RenameVariable -> Rename a -> Rename a
+bindVariables bs = local (renameVariables %~ Map.unionWith mappend bs)
 
 localBind :: Map Name UniqueName -> Rename a -> Rename a
-localBind bs = local (Map.union bs)
+localBind = bindVariables . fmap RLocal

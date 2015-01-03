@@ -101,7 +101,7 @@ instance (Pretty ty, Pretty n, Show ty, Show n, Show a, Show b) => Pretty (Ann' 
                              $+$ "in" <+> pPrint e
   pPrint (ECase e cs)      = ("case" <+> pPrint e <+> "of")
                          $$ nest 1 (vcat (fmap (\(pat, e) -> pPrint pat <+> "->" <+> pPrint e) cs))
-  pPrint (EAnnot ty e)     = pPrint ty <+> "::" <+> pPrint e
+  pPrint (EAnnot ty e)     = pPrint e <+> "::" <+> pPrint ty
   pPrint (EInt x)          = text (show x)
   pPrint (EChar c)         = text (show c)
 
@@ -143,6 +143,7 @@ instance (Pretty n, Show n) => Pretty (Module n) where
                                                                            "|" <+> pPrint n <+> hsep (pPrint <$> tys)
                                                          )
               (n, TypeDeclaration vs ty)   -> "type" <+> pPrint n <+> hsep (pPrint <$> vs) <+> "=" <+> pPrint ty
+              (n, PrimitiveTypeDeclaration vs) -> "primitive type" <+> pPrint n <+> hsep (pPrint <$> vs)
            )
     , nest 1 $
       vcat (Map.toList decls
